@@ -69,13 +69,20 @@
     container.innerHTML = `<div class="project-grid">` + rows.map(r => {
       const name = escapeHtml(r["Project"]);
       const stage = escapeHtml(r["Current Stage"]);
-      const health = escapeHtml(r["Overall Health"]);
       const nextPres = formatGvizDate(r["Next Presentation"]);
+
+      // A completed project's stale-log "Red" is a false alarm, not a
+      // real issue, so show a neutral "Pending" badge instead of the
+      // health color for anything marked Complete in Project Status.
+      const isComplete = (r["Project Status"] || "").trim().toLowerCase() === "complete";
+      const healthLabel = isComplete ? "Pending" : (escapeHtml(r["Overall Health"]) || "Unknown");
+      const healthCls = isComplete ? "health-unknown" : healthClass(r["Overall Health"]);
+
       return `
         <a class="project-card" href="project.html?id=${encodeURIComponent(r["Project"] || "")}">
           <h3>${name}</h3>
           <p class="stage">${stage}</p>
-          <span class="health ${healthClass(r["Overall Health"])}">${health || "Unknown"}</span>
+          <span class="health ${healthCls}">${healthLabel}</span>
           <p class="next-pres">Next: ${nextPres || "TBD"}</p>
         </a>`;
     }).join("") + `</div>`;
