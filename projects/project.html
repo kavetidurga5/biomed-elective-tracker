@@ -118,8 +118,9 @@
 
       document.getElementById("stage-text").innerHTML =
         `<strong>${escapeHtml(project ? project["Current Stage"] : "Not yet set")}</strong>`;
+      const isComplete = (project && project["Project Status"] || "").trim().toLowerCase() === "complete";
       document.getElementById("health-text").innerHTML =
-        `<strong>${escapeHtml(project ? project["Overall Health"] : "Unknown")}</strong>`;
+        `<strong>${isComplete ? "Pending" : escapeHtml(project ? project["Overall Health"] : "Unknown")}</strong>`;
       document.getElementById("next-pres-text").innerHTML =
         `<strong>${escapeHtml(project && project["Next Presentation"] ? formatGvizDate(project["Next Presentation"]) : "TBD")}</strong>`;
 
