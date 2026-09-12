@@ -99,6 +99,23 @@
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
+  // Same robust date parser used on the Dashboard: handles the gviz
+  // "Date(y,m,d)" literal and the plain-text ISO dates Syllabus Map uses.
+  function parseGvizDate(value) {
+    if (value == null) return null;
+    if (value instanceof Date) return value;
+    if (typeof value !== "string") return null;
+    if (value.startsWith("Date(")) {
+      const nums = value.slice(5, -1).split(",").map(n => parseInt(n, 10));
+      const [y, m, d] = nums;
+      return new Date(y, m, d);
+    }
+    const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
+    const fallback = new Date(value);
+    return isNaN(fallback) ? null : fallback;
+  }
+
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get("id");
 
@@ -196,6 +213,7 @@
           const reached = matches.length > 0;
           return {
             week: row["Week"],
+            rawDate: parseGvizDate(row["Date"]),
             targetDate: formatGvizDate(row["Date"]),
             topic: row["Topic"] || "",
             expectedStage,
@@ -204,6 +222,14 @@
             debrief: reached ? (matches[0]["Description"] || "") : "",
           };
         });
+
+      // The calendar's current week, independent of this project's own
+      // progress, so a project with no logs yet still shows where the
+      // course actually is right now instead of defaulting to Week 1.
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      let calendarWeekIdx = -1;
+      checkpoints.forEach((c, i) => { if (c.rawDate && c.rawDate <= today) calendarWeekIdx = i; });
 
       const lastReachedIdx = checkpoints.reduce((acc, c, i) => (c.reached ? i : acc), -1);
       const nodesEl = document.getElementById("roadmap-nodes");
@@ -214,8 +240,8 @@
         nodesEl.innerHTML = `<p class="state-message-dark">No syllabus checkpoints found.</p>`;
       } else {
         nodesEl.innerHTML = checkpoints.map((c, i) => {
-          const isCurrent = i === lastReachedIdx + 1; // next checkpoint up
-          const cls = c.reached ? "reached" : (isCurrent ? "current" : "");
+          const isCurrentWeek = i === calendarWeekIdx;
+          const cls = c.reached ? "reached" : (isCurrentWeek ? "current" : "");
           return `
             <div class="roadmap-node ${cls}" data-idx="${i}">
               <div class="roadmap-dot"></div>
@@ -242,8 +268,10 @@
           node.addEventListener("click", () => showDetail(parseInt(node.dataset.idx, 10)));
         });
 
-        // Auto-open the most recently reached checkpoint by default
+        // Auto-open the most recently reached checkpoint by default, or
+        // the calendar's current week if this project has no logs yet.
         if (lastReachedIdx >= 0) showDetail(lastReachedIdx);
+        else if (calendarWeekIdx >= 0) showDetail(calendarWeekIdx);
       }
       } // end standard-tracking else branch
 
