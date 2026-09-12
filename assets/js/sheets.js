@@ -30,6 +30,30 @@ const HEADER_OVERRIDES = {
 // ──────────────────────────────────────────────────────────────────
 
 /**
+ * Thrown by fetchTab on ANY failure path.
+ *
+ * Previously every failure returned [], which downstream rendered as
+ * "No open requests right now." and stat chips of 0/0/0/0 — a dead API
+ * was indistinguishable from a healthy semester. Callers must now
+ * distinguish "loaded, and there is nothing" from "did not load".
+ *
+ * `reason` is one of: network | http | parse | gviz | envelope
+ */
+class SheetError extends Error {
+  constructor(message, reason, cause) {
+    super(message);
+    this.name = "SheetError";
+    this.reason = reason;
+    this.cause = cause;
+  }
+}
+
+// Timestamp of the most recent successful fetchTab, for the "Last synced"
+// line. Null until something actually loads.
+let lastSyncedAt = null;
+function getLastSyncedAt() { return lastSyncedAt; }
+
+/**
  * Parse a gviz date cell value, which comes back as a literal string
  * like "Date(2026,8,14)" (month is 0-indexed), into a readable string
  * like "Sep 14, 2026". Returns "" if the value isn't a gviz date.
@@ -67,30 +91,47 @@ async function fetchTab(gid) {
   try {
     res = await fetch(url);
   } catch (err) {
-    console.error("Network error fetching sheet tab:", gid, err);
-    return [];
+    throw new SheetError(`Network error fetching tab ${gid}`, "network", err);
   }
 
   if (!res.ok) {
-    console.error("Sheet fetch failed:", res.status, gid);
-    return [];
+    throw new SheetError(`Sheet fetch failed with HTTP ${res.status} for tab ${gid}`, "http");
   }
 
   const text = await res.text();
 
+  // gviz wraps its JSON in a JS callback string:
+  //   /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+  // This used to be stripped with substring(47) — a magic number equal to
+  // the length of that exact prefix. Two ways that bit:
+  //   - any change to the wrapper (padding, whitespace) silently corrupts
+  //     the slice, and
+  //   - gviz answers HTTP 200 with an HTML LOGIN PAGE when the sheet stops
+  //     being link-viewable, which sliced into garbage and yielded [].
+  // Match the callback instead, and treat a non-match as a hard failure.
+  const m = text.match(/setResponse\(([\s\S]*)\);?\s*$/);
+  if (!m) {
+    throw new SheetError(
+      `Unexpected gviz envelope for tab ${gid} — the sheet may be unshared, or the response is not JSON`,
+      "envelope"
+    );
+  }
+
   let json;
   try {
-    // gviz wraps its JSON in a JS callback string — strip the wrapper.
-    json = JSON.parse(text.substring(47).slice(0, -2));
+    json = JSON.parse(m[1]);
   } catch (err) {
-    console.error("Could not parse gviz response for gid", gid, err);
-    return [];
+    throw new SheetError(`Could not parse gviz JSON for tab ${gid}`, "parse", err);
   }
 
   if (json.status === "error") {
-    console.error("gviz returned an error for gid", gid, json.errors);
-    return [];
+    throw new SheetError(
+      `gviz returned an error for tab ${gid}: ${(json.errors || []).map(e => e.detailed_message || e.message).join("; ")}`,
+      "gviz"
+    );
   }
+
+  lastSyncedAt = new Date();
 
   const table = json.table;
   let headers, dataRows;

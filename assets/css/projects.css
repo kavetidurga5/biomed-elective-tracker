@@ -222,3 +222,22 @@ body {
   .site-topbar { padding: 18px 20px; }
   .detail-hero { padding: 56px 24px; }
 }
+
+/* ── Error state ────────────────────────────────────────────────────
+   Must be visually distinct from .state-message. A failed load used to
+   render in the same muted grey as "nothing scheduled yet", so a dead
+   API looked like a quiet week. Shared by all three pages. */
+.state-error {
+  font-size: 13px; color: #8a2a22; background: rgba(208,69,58,0.08);
+  border: 1px solid rgba(208,69,58,0.22); border-left: 3px solid #D0453A;
+  border-radius: 8px; padding: 12px 14px; margin: 8px 0; line-height: 1.5;
+}
+.state-error strong { display: block; margin-bottom: 3px; color: #D0453A; }
+
+/* Same, on the navy project-detail hero. */
+.state-error-dark {
+  font-size: 13px; color: #ffd9d4; background: rgba(208,69,58,0.16);
+  border: 1px solid rgba(255,140,130,0.3); border-left: 3px solid #ff8c82;
+  border-radius: 8px; padding: 12px 14px; margin: 8px 0; line-height: 1.5;
+}
+.state-error-dark strong { display: block; margin-bottom: 3px; color: #ff8c82; }
