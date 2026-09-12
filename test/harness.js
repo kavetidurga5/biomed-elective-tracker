@@ -17,39 +17,88 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
 
-/** Slice out `function NAME(...) { ... }` by matching braces. */
+/** Slice out `function NAME(...) { ... }` by matching braces.
+ *  Tracks strings, comments, and regex literals so quote/brace characters
+ *  inside any of those (e.g. the regex /'/g, or a comment containing a
+ *  bare ") don't throw off the brace count.
+ */
 function extractFunction(src, name) {
   const start = src.indexOf(`function ${name}(`);
   if (start === -1) throw new Error(`extractFunction: ${name} not found`);
   const open = src.indexOf("{", start);
-  let depth = 0, inStr = null, inLineComment = false, inBlockComment = false, prev = "";
+  let depth = 0, inStr = null, inLineComment = false, inBlockComment = false;
+  let lastSignificant = "("; // what precedes the open paren of the fn args
   for (let i = open; i < src.length; i++) {
     const ch = src[i], next = src[i + 1];
-    if (inLineComment) { if (ch === "\n") inLineComment = false; prev = ch; continue; }
-    if (inBlockComment) { if (ch === "*" && next === "/") { inBlockComment = false; i++; } prev = ch; continue; }
+    if (inLineComment) { if (ch === "\n") inLineComment = false; continue; }
+    if (inBlockComment) { if (ch === "*" && next === "/") { inBlockComment = false; i++; } continue; }
     if (inStr) {
-      if (ch === "\\") { i++; prev = ""; continue; }
+      if (ch === "\\") { i++; continue; }
       if (ch === inStr) inStr = null;
-      prev = ch; continue;
+      continue;
     }
     if (ch === "/" && next === "/") { inLineComment = true; i++; continue; }
     if (ch === "/" && next === "*") { inBlockComment = true; i++; continue; }
-    if (ch === '"' || ch === "'" || ch === "`") { inStr = ch; prev = ch; continue; }
-    if (ch === "{") depth++;
-    else if (ch === "}") { depth--; if (depth === 0) return src.slice(start, i + 1); }
-    prev = ch;
+    if (ch === "/" && isRegexPosition(lastSignificant)) {
+      // Regex literal: scan to an unescaped closing "/", honoring [...]
+      // character classes (which may themselves contain an unescaped "/").
+      let j = i + 1, inClass = false;
+      for (; j < src.length; j++) {
+        const c = src[j];
+        if (c === "\\") { j++; continue; }
+        if (c === "[") inClass = true;
+        else if (c === "]") inClass = false;
+        else if (c === "/" && !inClass) break;
+      }
+      // Skip trailing flags (g, i, m, ...).
+      let k = j + 1;
+      while (k < src.length && /[a-z]/i.test(src[k])) k++;
+      i = k - 1;
+      lastSignificant = "/";
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inStr = ch; lastSignificant = ch; continue; }
+    if (ch === "{") { depth++; lastSignificant = ch; continue; }
+    if (ch === "}") { depth--; if (depth === 0) return src.slice(start, i + 1); lastSignificant = ch; continue; }
+    if (!/\s/.test(ch)) lastSignificant = ch;
   }
   throw new Error(`extractFunction: unbalanced braces in ${name}`);
 }
 
-/** Slice out a single-line `const NAME = ...;` arrow/expression helper. */
+/** Heuristic: could a "/" at this point start a regex literal rather than
+ *  be division? True unless the previous significant character is one
+ *  that would make "/" a division operator (identifier, number, ), ], }).
+ */
+function isRegexPosition(lastSignificant) {
+  return !/[A-Za-z0-9_$)\]}]/.test(lastSignificant);
+}
+
+/** Slice out a `const NAME = ...;` declaration, single-line or a
+ *  multi-line object/array literal (matched via braces/brackets). */
 function extractConst(src, name) {
-  const re = new RegExp(`^\\s*const ${name}\\s*=.*?;\\s*$`, "m");
-  const m = src.match(re);
-  if (!m) throw new Error(`extractConst: ${name} not found`);
-  // Re-declare as `var` so it lands on the sandbox global and stays visible
-  // to function declarations pulled in from the same file.
-  return m[0].trim().replace(/^const /, "var ");
+  const marker = `const ${name}`;
+  const idx = src.indexOf(marker);
+  if (idx === -1) throw new Error(`extractConst: ${name} not found`);
+  const eq = src.indexOf("=", idx);
+  let i = eq + 1;
+  while (/\s/.test(src[i])) i++;
+  const valueStart = i;
+
+  if (src[i] === "{" || src[i] === "[") {
+    const open = src[i], close = open === "{" ? "}" : "]";
+    let depth = 0;
+    for (; i < src.length; i++) {
+      if (src[i] === open) depth++;
+      else if (src[i] === close) { depth--; if (depth === 0) { i++; break; } }
+    }
+    // Skip to the terminating semicolon, if present.
+    while (src[i] === ";" ) { i++; break; }
+    return `var ${name} = ${src.slice(valueStart, i).replace(/;$/, "")};`;
+  }
+
+  // Single-line scalar/expression value.
+  const semi = src.indexOf(";", i);
+  return `var ${name} = ${src.slice(valueStart, semi)};`;
 }
 
 /** Eval an arbitrary snippet inside an existing sandbox. */

@@ -22,6 +22,7 @@
   <nav class="site-topbar-nav">
     <a href="../index.html">Dashboard</a>
     <a href="index.html" class="active">Projects</a>
+    <a href="#" id="submit-update-link" target="_blank" rel="noopener" style="display:none;">Submit Weekly Update</a>
   </nav>
 </header>
 
@@ -61,7 +62,7 @@
       <div class="roadmap-track" id="roadmap-track">
         <div class="roadmap-line-bg"></div>
         <div class="roadmap-line-fill" id="roadmap-fill"></div>
-        <div class="roadmap-nodes" id="roadmap-nodes">
+        <div class="roadmap-nodes" id="roadmap-nodes" aria-live="polite">
           <p class="state-message-dark">Loading roadmap…</p>
         </div>
       </div>
@@ -79,7 +80,7 @@
     </div>
 
     <p class="conf-heading">Presentations</p>
-    <div class="conf-row" id="presentations-row">
+    <div class="conf-row" id="presentations-row" aria-live="polite">
       <p class="state-message-dark">Loading…</p>
     </div>
   </div>
@@ -93,28 +94,16 @@
 
 <script src="../assets/js/sheets.js"></script>
 <script>
-  function escapeHtml(str) {
-    if (str == null) return "";
-    return String(str)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  wireSubmitUpdateLink();
 
-  // Same robust date parser used on the Dashboard: handles the gviz
-  // "Date(y,m,d)" literal and the plain-text ISO dates Syllabus Map uses.
-  function parseGvizDate(value) {
-    if (value == null) return null;
-    if (value instanceof Date) return value;
-    if (typeof value !== "string") return null;
-    if (value.startsWith("Date(")) {
-      const nums = value.slice(5, -1).split(",").map(n => parseInt(n, 10));
-      const [y, m, d] = nums;
-      return new Date(y, m, d);
-    }
-    const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
-    const fallback = new Date(value);
-    return isNaN(fallback) ? null : fallback;
-  }
+  // escapeHtml and safeLink are defined once, in assets/js/sheets.js, and
+  // loaded globally via <script src="../assets/js/sheets.js"> above. They
+  // used to be duplicated in each of the three pages; this is the shared
+  // copy.
+
+  // parseGvizDate is defined once, in assets/js/sheets.js, loaded globally
+  // via <script src="../assets/js/sheets.js"> above. Used to be duplicated
+  // here and in index.html; this is the shared copy.
 
   // Numeric timestamp for sorting. gviz timestamps are STRINGS like
   // "Date(2026,10,19)", so localeCompare puts October before September and
@@ -203,17 +192,26 @@
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get("id");
 
+  // Normalize a Project value for matching across tabs. A trailing space
+  // in one tab (e.g. Roster) previously broke an exact === match against
+  // Dashboard, silently producing "Team: Not yet assigned" with no error.
+  // This does NOT change what's displayed — only what's compared.
+  function projectKey(v) {
+    return String(v || "").trim().toLowerCase();
+  }
+
   if (!projectId) {
     document.getElementById("project-title").textContent = "No project specified";
     document.getElementById("project-subtitle").textContent = "Go back to Projects and pick one from the list.";
   } else {
-    fetchAllTabs().then(({ dashboard, roster, presentations, syllabus, updateLog }) => {
-      const project = dashboard.find(r => r["Project"] === projectId);
-      const team = roster.filter(r => r["Project"] === projectId);
-      const pres = presentations.filter(r => r["Project"] === projectId);
-      const logs = updateLog.filter(r => r["Project"] === projectId);
+    withTimeout(fetchAllTabs(), 15000, "project data").then(({ dashboard, roster, presentations, syllabus, updateLog }) => {
+      const project = dashboard.find(r => projectKey(r["Project"]) === projectKey(projectId));
+      const team = roster.filter(r => projectKey(r["Project"]) === projectKey(projectId));
+      const pres = presentations.filter(r => projectKey(r["Project"]) === projectKey(projectId));
+      const logs = updateLog.filter(r => projectKey(r["Project"]) === projectKey(projectId));
 
       document.getElementById("project-title").textContent = projectId;
+      document.title = `${projectId} — Biomedical Innovations, UTSW`;
       document.getElementById("project-subtitle").textContent =
         project ? "Live status for this project, pulled directly from the team's tracker." : "No dashboard entry found for this project yet.";
 
@@ -236,7 +234,12 @@
         const posterImg = project["Poster Image"] ? project["Poster Image"].trim() : "";
         document.getElementById("poster-section").style.display = "block";
         document.getElementById("poster-link").href = `../assets/docs/${posterPdf}`;
-        document.getElementById("poster-img").src = posterImg
+        const imgEl = document.getElementById("poster-img");
+        // A missing/mistyped image filename previously showed a broken-image
+        // icon inside the navy hero. Hide just the image on failure — the
+        // PDF link and label below it stay usable either way.
+        imgEl.onerror = () => { imgEl.style.display = "none"; };
+        imgEl.src = posterImg
           ? `../assets/img/posters/${posterImg}`
           : `../assets/img/posters/${posterPdf.replace(/\.pdf$/i, ".jpg")}`;
       }
@@ -339,7 +342,10 @@
       if (pres.length) {
         presEl.innerHTML = pres.map(p => {
           const name = p["Event Name"] || p["Presentation Type"] || "Presentation";
-          const link = p["Link"] ? p["Link"].trim() : "";
+          // Quote-escaping alone stops attribute breakout; scheme
+          // whitelisting also stops a "javascript:" or "data:" Link cell
+          // from ever becoming a clickable href in the first place.
+          const link = safeLink(p["Link"]);
           const inner = `
             <span class="conf-pill-icon">📋</span>
             <div class="conf-pill-text">
