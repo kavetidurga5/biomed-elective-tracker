@@ -20,7 +20,7 @@
     </div>
   </a>
   <nav class="site-topbar-nav">
-    <a href="../index.html">Home</a>
+    <a href="../index.html">Dashboard</a>
     <a href="index.html" class="active">Projects</a>
   </nav>
 </header>
@@ -45,10 +45,10 @@
 <script>
   function healthClass(value) {
     if (!value) return "health-unknown";
-    const v = value.toLowerCase().replace(/\s+/g, "");
-    if (v.includes("ontrack")) return "health-ontrack";
-    if (v.includes("atrisk")) return "health-atrisk";
-    if (v.includes("blocked")) return "health-blocked";
+    const v = value.toLowerCase().trim();
+    if (v.includes("green")) return "health-ontrack";
+    if (v.includes("yellow")) return "health-atrisk";
+    if (v.includes("red")) return "health-blocked";
     return "health-unknown";
   }
 
@@ -70,7 +70,7 @@
       const name = escapeHtml(r["Project"]);
       const stage = escapeHtml(r["Current Stage"]);
       const health = escapeHtml(r["Overall Health"]);
-      const nextPres = escapeHtml(r["Next Presentation"]);
+      const nextPres = formatGvizDate(r["Next Presentation"]);
       return `
         <a class="project-card" href="project.html?id=${encodeURIComponent(r["Project"] || "")}">
           <h3>${name}</h3>
