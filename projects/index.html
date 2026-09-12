@@ -43,8 +43,6 @@
 
 <script src="../assets/js/sheets.js"></script>
 <script>
-  wireSubmitUpdateLink();
-
   function healthClass(value) {
     if (!value) return "health-unknown";
     const v = value.toLowerCase().trim();
@@ -71,9 +69,22 @@
     return `<span class="staleness staleness-${level}" title="${STALENESS_LABEL[level]}">${STALENESS_EMOJI[level]} ${escapeHtml(text)}</span>`;
   }
 
+  // M-3 badge markup: compact rollup for a project card. No badge at all
+  // when there's nothing on file yet, rather than a confusing "0/0".
+  function renderDeliverableSummaryBadge(summary) {
+    if (!summary.total) return "";
+    const cls = summary.lateCount > 0 ? "deliv-badge-late" : "deliv-badge-ok";
+    const text = `${summary.submittedCount}/${summary.total} deliverables` +
+      (summary.lateCount ? ` · ${summary.lateCount} late` : "");
+    return `<span class="deliv-badge ${cls}">${escapeHtml(text)}</span>`;
+  }
+
   withTimeout(fetchTab(GIDS.dashboard), 15000, "dashboard").then(dashboardRows => {
-    return withTimeout(fetchTab(GIDS.updateLog), 15000, "update log").then(updateLogRows => ({ dashboardRows, updateLogRows }));
-  }).then(({ dashboardRows, updateLogRows }) => {
+    return Promise.all([
+      withTimeout(fetchTab(GIDS.updateLog), 15000, "update log"),
+      withTimeout(fetchTab(GIDS.deliverables), 15000, "deliverables"),
+    ]).then(([updateLogRows, deliverableRows]) => ({ dashboardRows, updateLogRows, deliverableRows }));
+  }).then(({ dashboardRows, updateLogRows, deliverableRows }) => {
     const container = document.getElementById("project-cards");
 
     // A blank Project cell previously became an empty ghost card linking
@@ -108,12 +119,18 @@
         daysSinceLastUpdate(updateLogRows, r["Project"], today)
       );
 
+      // M-3: compact deliverable rollup, e.g. "3/5 deliverables · 1 late".
+      const delivBadge = renderDeliverableSummaryBadge(
+        buildDeliverableSummary(deliverableRows, r["Project"], today)
+      );
+
       return `
         <a class="project-card" href="project.html?id=${encodeURIComponent((r["Project"] || "").trim())}">
           <h3>${name}</h3>
           <p class="stage">${stage}</p>
           <span class="health ${healthCls}">${healthLabel}</span>
           ${staleBadge}
+          ${delivBadge}
           <p class="next-pres">Next: ${nextPres || "TBD"}</p>
         </a>`;
     }).join("") + `</div>`;

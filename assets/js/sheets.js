@@ -17,6 +17,7 @@ const GIDS = {
   presentations: "2069434519",
   syllabus: "1905738931",
   updateLog: "1731368813",
+  deliverables: "654936910",
 };
 
 // Some tabs have header cells containing extra baked-in guidance text
@@ -154,30 +155,55 @@ const STALENESS_LABEL = {
   never: "Never logged",
 };
 
-// ── TODO: fill in from the update form's "Share" link ────────────────
-// The brief flags this: "No link to the update form anywhere on the
-// site. If teams have to hunt for where to log, compliance drops and
-// every downstream metric degrades." Set this once, here, and the
-// "Submit Weekly Update" button on all three pages activates itself —
-// no other file needs to change.
-const UPDATE_FORM_URL = "https://forms.gle/jUMKPpwyNTsM5SVMA"; // e.g. "https://forms.gle/xxxxxxxxxxxx"
-// ──────────────────────────────────────────────────────────────────
+/**
+ * M-3 — Deliverable compliance.
+ *
+ * "Syllabus §III defines five hard deliverables... Nothing on the site
+ * tracks whether a team actually submitted. Projects × Deliverables,
+ * ✓ / ✗ / late." Classifies a single Deliverables-tab row against today:
+ *   - "submitted": Submitted column is (case/whitespace-insensitively) "Yes"
+ *   - "late": not submitted, and the Due Date has already passed
+ *   - "pending": not submitted, due date is today or in the future
+ */
+function classifyDeliverableStatus(row, today) {
+  const submitted = String(row["Submitted"] || "").trim().toLowerCase() === "yes";
+  if (submitted) return "submitted";
+  const due = parseGvizDate(row["Due Date"]);
+  if (due && due < today) return "late";
+  return "pending";
+}
 
 /**
- * Wires up any element with id="submit-update-link" (present on all
- * three pages' nav bars) to UPDATE_FORM_URL. Hides the link entirely
- * rather than shipping a dead "#" button if the URL hasn't been set yet.
- * Call this once, after the DOM is ready, from each page's own script.
+ * Build one project's deliverable checklist: every Deliverables-tab row
+ * for that project, classified and sorted by due date, plus rollup
+ * counts. Matching is case/whitespace-insensitive, consistent with every
+ * other cross-tab join on this site (P1-10).
  */
-function wireSubmitUpdateLink() {
-  const el = document.getElementById("submit-update-link");
-  if (!el) return;
-  if (UPDATE_FORM_URL) {
-    el.href = UPDATE_FORM_URL;
-    el.style.display = "";
-  } else {
-    el.style.display = "none";
-  }
+function buildDeliverableSummary(deliverableRows, projectName, today) {
+  const key = v => String(v || "").trim().toLowerCase();
+  const target = key(projectName);
+  const items = deliverableRows
+    .filter(r => key(r["Project"]) === target)
+    .map(r => ({
+      deliverable: r["Deliverable"] || "",
+      dueDate: parseGvizDate(r["Due Date"]),
+      submittedDate: parseGvizDate(r["Submitted Date"]),
+      status: classifyDeliverableStatus(r, today),
+    }))
+    .sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate - b.dueDate;
+    });
+
+  return {
+    items,
+    total: items.length,
+    submittedCount: items.filter(i => i.status === "submitted").length,
+    lateCount: items.filter(i => i.status === "late").length,
+    pendingCount: items.filter(i => i.status === "pending").length,
+  };
 }
 
 /**
@@ -328,12 +354,13 @@ function withTimeout(promise, ms, label) {
  * @returns {Promise<{dashboard: Array, roster: Array, presentations: Array, syllabus: Array, updateLog: Array}>}
  */
 async function fetchAllTabs() {
-  const [dashboard, roster, presentations, syllabus, updateLog] = await Promise.all([
+  const [dashboard, roster, presentations, syllabus, updateLog, deliverables] = await Promise.all([
     fetchTab(GIDS.dashboard),
     fetchTab(GIDS.roster),
     fetchTab(GIDS.presentations),
     fetchTab(GIDS.syllabus),
     fetchTab(GIDS.updateLog),
+    fetchTab(GIDS.deliverables),
   ]);
-  return { dashboard, roster, presentations, syllabus, updateLog };
+  return { dashboard, roster, presentations, syllabus, updateLog, deliverables };
 }

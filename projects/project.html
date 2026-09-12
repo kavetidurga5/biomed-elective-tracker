@@ -22,7 +22,6 @@
   <nav class="site-topbar-nav">
     <a href="../index.html">Dashboard</a>
     <a href="index.html" class="active">Projects</a>
-    <a href="#" id="submit-update-link" target="_blank" rel="noopener" style="display:none;">Submit Weekly Update</a>
   </nav>
 </header>
 
@@ -79,6 +78,11 @@
       </div>
     </div>
 
+    <p class="conf-heading">Deliverables</p>
+    <div class="deliverables-list" id="deliverables-list" aria-live="polite">
+      <p class="state-message-dark">Loading…</p>
+    </div>
+
     <p class="conf-heading">Presentations</p>
     <div class="conf-row" id="presentations-row" aria-live="polite">
       <p class="state-message-dark">Loading…</p>
@@ -94,8 +98,6 @@
 
 <script src="../assets/js/sheets.js"></script>
 <script>
-  wireSubmitUpdateLink();
-
   // escapeHtml and safeLink are defined once, in assets/js/sheets.js, and
   // loaded globally via <script src="../assets/js/sheets.js"> above. They
   // used to be duplicated in each of the three pages; this is the shared
@@ -200,11 +202,44 @@
     return String(v || "").trim().toLowerCase();
   }
 
+  // M-3: render a project's deliverable checklist. Takes the container
+  // element directly (rather than looking it up itself) so the HTML it
+  // produces is testable by calling this with a stub object.
+  const DELIVERABLE_STATUS_LABEL = { submitted: "✓ Submitted", late: "⚠ Late", pending: "Pending" };
+  const DELIVERABLE_STATUS_CLASS = { submitted: "deliv-submitted", late: "deliv-late", pending: "deliv-pending" };
+
+  function renderDeliverablesList(el, summary) {
+    if (!summary.total) {
+      el.innerHTML = `<p class="state-message-dark">No deliverables on file for this project yet.</p>`;
+      return;
+    }
+    const rows = summary.items.map(item => {
+      const cls = DELIVERABLE_STATUS_CLASS[item.status];
+      const label = DELIVERABLE_STATUS_LABEL[item.status];
+      const dateText = item.status === "submitted"
+        ? (item.submittedDate ? `Submitted ${fmtShortDate(item.submittedDate)}` : "Submitted")
+        : (item.dueDate ? `Due ${fmtShortDate(item.dueDate)}` : "No due date set");
+      return `
+        <div class="deliv-row">
+          <span class="deliv-name">${escapeHtml(item.deliverable)}</span>
+          <span class="deliv-status ${cls}">${label}</span>
+          <span class="deliv-date">${escapeHtml(dateText)}</span>
+        </div>`;
+    }).join("");
+    const summaryLine = `<p class="deliv-summary">${summary.submittedCount}/${summary.total} submitted` +
+      (summary.lateCount ? ` · ${summary.lateCount} late` : "") + `</p>`;
+    el.innerHTML = summaryLine + rows;
+  }
+
+  function fmtShortDate(dt) {
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
   if (!projectId) {
     document.getElementById("project-title").textContent = "No project specified";
     document.getElementById("project-subtitle").textContent = "Go back to Projects and pick one from the list.";
   } else {
-    withTimeout(fetchAllTabs(), 15000, "project data").then(({ dashboard, roster, presentations, syllabus, updateLog }) => {
+    withTimeout(fetchAllTabs(), 15000, "project data").then(({ dashboard, roster, presentations, syllabus, updateLog, deliverables }) => {
       const project = dashboard.find(r => projectKey(r["Project"]) === projectKey(projectId));
       const team = roster.filter(r => projectKey(r["Project"]) === projectKey(projectId));
       const pres = presentations.filter(r => projectKey(r["Project"]) === projectKey(projectId));
@@ -337,6 +372,11 @@
       }
       } // end standard-tracking else branch
 
+      // ── Deliverables checklist (M-3) ──────────────────────────────
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const deliverableSummary = buildDeliverableSummary(deliverables, projectId, today);
+      renderDeliverablesList(document.getElementById("deliverables-list"), deliverableSummary);
 
       const presEl = document.getElementById("presentations-row");
       if (pres.length) {
@@ -371,6 +411,8 @@
         `<p class="state-error-dark">Roadmap unavailable — data did not load.</p>`;
       document.getElementById("presentations-row").innerHTML =
         `<p class="state-error-dark">Presentations unavailable — data did not load.</p>`;
+      document.getElementById("deliverables-list").innerHTML =
+        `<p class="state-error-dark">Deliverables unavailable — data did not load.</p>`;
       ["stage-text","health-text","team-text","next-pres-text"]
         .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
     });

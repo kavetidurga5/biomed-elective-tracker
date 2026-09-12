@@ -249,3 +249,25 @@ body {
 }
 .staleness-never { color: var(--ghost); font-weight: 600; }
 .staleness-red { color: #b02020; font-weight: 600; }
+
+/* ── M-3: Deliverables checklist (project detail page) ────────────── */
+.deliverables-list { margin-bottom: 34px; }
+.deliv-summary { font-size: 12px; color: rgba(255,255,255,0.5); margin: 0 0 10px; }
+.deliv-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.deliv-row:last-child { border-bottom: none; }
+.deliv-name { font-size: 13px; color: rgba(255,255,255,0.86); flex: 1 1 auto; min-width: 180px; }
+.deliv-status { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 100px; white-space: nowrap; }
+.deliv-submitted { background: rgba(30,158,90,0.18); color: #6fe0a0; }
+.deliv-late      { background: rgba(200,40,40,0.18); color: #ff8c82; }
+.deliv-pending   { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); }
+.deliv-date { font-size: 11px; color: rgba(255,255,255,0.36); white-space: nowrap; }
+
+/* ── M-3: deliverable rollup badge (project grid page) ─────────────── */
+.deliv-badge {
+  display: block; font-size: 11px; margin: 6px 0 0; font-weight: 500;
+}
+.deliv-badge-ok   { color: var(--slate); }
+.deliv-badge-late { color: #b02020; font-weight: 600; }
