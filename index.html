@@ -133,18 +133,45 @@
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  // Parse a gviz date literal ("Date(2026,8,14)") into a real Date object.
+  // Parse a date value from a gviz cell. Handles three cases seen across
+  // this workbook's tabs: the gviz literal "Date(y,m,d)" (true Date cells),
+  // a plain ISO string like "2026-09-03" (the Syllabus Map tab stores dates
+  // as text, not real Date cells, so gviz returns them as-is), and anything
+  // else JS can parse as a fallback.
   function parseGvizDate(value) {
-    if (!value || typeof value !== "string" || !value.startsWith("Date(")) return null;
-    const nums = value.slice(5, -1).split(",").map(n => parseInt(n, 10));
-    const [y, m, d] = nums;
-    return new Date(y, m, d);
+    if (value == null) return null;
+    if (value instanceof Date) return value;
+    if (typeof value !== "string") return null;
+
+    if (value.startsWith("Date(")) {
+      const nums = value.slice(5, -1).split(",").map(n => parseInt(n, 10));
+      const [y, m, d] = nums;
+      return new Date(y, m, d);
+    }
+
+    const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
+    }
+
+    const fallback = new Date(value);
+    return isNaN(fallback) ? null : fallback;
   }
 
   function fmtDate(dt) {
     if (!dt) return "TBD";
     return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
+
+  // Fixed deliverable dates from the syllabus (Section III). Hardcoded
+  // since these are set once for the semester, not tracked in a sheet tab.
+  const DELIVERABLES = [
+    { date: new Date(2026, 8, 8),  label: "Project Preference Ranking due" },
+    { date: new Date(2026, 8, 9),  label: "Team Formation due" },
+    { date: new Date(2026, 9, 1),  label: "Project Proposal due" },
+    { date: new Date(2026, 9, 22), label: "Mid-Semester Progress Check-In due" },
+    { date: new Date(2026, 10, 19), label: "Pitch Presentation due" },
+  ];
 
   // ── Where We Are Now ──────────────────────────────────────────
   fetchTab(GIDS.syllabus).then(rows => {
@@ -157,6 +184,7 @@
         date: parseGvizDate(r["Date"]),
         topic: r["Topic"],
         stage: r["Expected Stage"],
+        note: r["Agenda Note"] || "",
       }))
       .filter(w => w.date)
       .sort((a, b) => a.date - b.date);
@@ -166,20 +194,31 @@
       return;
     }
 
-    let current = weeks[0];
-    for (const w of weeks) {
-      if (w.date <= today) current = w;
-    }
+    let currentIndex = 0;
+    weeks.forEach((w, i) => { if (w.date <= today) currentIndex = i; });
+    const current = weeks[currentIndex];
 
     const totalWeeks = weeks.length;
     const pct = Math.round((current.week / totalWeeks) * 100);
 
     document.getElementById("week-heading").textContent = `Week ${current.week} of ${totalWeeks}`;
-    document.getElementById("week-topic").textContent = current.topic || "";
+    document.getElementById("week-topic").textContent = current.note
+      ? `${current.topic} — ${current.note}`
+      : (current.topic || "");
     document.getElementById("week-progress-fill").style.width = pct + "%";
     document.getElementById("week-progress-label").innerHTML =
       `<span>Week ${current.week} of ${totalWeeks}</span>`;
-    document.getElementById("week-stage-pill").textContent = `Expected Stage: ${current.stage || "—"}`;
+
+    const next = weeks[currentIndex + 1];
+    const windowEnd = next ? next.date : new Date(current.date.getTime() + 7*24*60*60*1000);
+    const dueThisWeek = DELIVERABLES.filter(d => d.date >= current.date && d.date < windowEnd);
+
+    const stagePillHtml = `<span class="week-stage-pill">Expected Stage: ${current.stage || "—"}</span>`;
+    const deliverableHtml = dueThisWeek.map(d =>
+      `<span class="week-stage-pill" style="background:rgba(232,160,32,0.22); border-color:rgba(232,160,32,0.4);">${escapeHtml(d.label)}</span>`
+    ).join("");
+    document.getElementById("week-stage-pill").outerHTML = `<div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">${stagePillHtml}${deliverableHtml}</div>`;
+
     const last = weeks[weeks.length - 1];
     document.getElementById("week-end-label").textContent = `${last.topic && last.topic.includes("Pitch") ? "Pitch Day" : "Final week"}: ${fmtDate(last.date)}`;
   }).catch(err => {
