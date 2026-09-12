@@ -87,9 +87,11 @@
         </a>`;
     }).join("") + `</div>`;
   }).catch(err => {
-    console.error(err);
+    console.error("Failed to load dashboard tab:", err);
     document.getElementById("project-cards").innerHTML =
-      `<p class="state-message">Couldn't load project data right now. Try refreshing.</p>`;
+      `<div class="state-error"><strong>Couldn't load the project list.</strong>` +
+      `The tracker sheet didn't respond. This is a loading failure, not an empty roster — ` +
+      `check your connection, or whether the sheet is still shared.</div>`;
   });
 </script>
 

@@ -116,6 +116,90 @@
     return isNaN(fallback) ? null : fallback;
   }
 
+  // Numeric timestamp for sorting. gviz timestamps are STRINGS like
+  // "Date(2026,10,19)", so localeCompare puts October before September and
+  // the 14th before the 3rd. Always compare parsed Dates, never the raw
+  // string. Returns null for undated rows so callers can sink them.
+  const tsOf = r => parseGvizDate(r["Timestamp"]);
+
+  // Chronological comparator; undated rows sort last rather than throwing.
+  function byTimestamp(a, b) {
+    const da = tsOf(a), db = tsOf(b);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da - db;
+  }
+
+  /**
+   * Build the roadmap checkpoints for one project.
+   *
+   * A checkpoint is "reached" when an Update Log entry matches its Expected
+   * Stage. Deliberately NOT bound by the checkpoint's own calendar week —
+   * this reflects the team's actual biodesign progress, not their alignment
+   * to the syllabus timeline. A team that prototypes in Week 3 should show
+   * that; a team still finding needs in Week 8 should show that too.
+   *
+   * The one guard that stays: each log claims the EARLIEST still-unclaimed
+   * checkpoint with a matching stage, so N entries light N nodes rather
+   * than every node that happens to share a stage (Prototyping spans
+   * Weeks 5-7 in ENRH 116 — one entry must not light all three).
+   *
+   * Pure: no DOM, no globals. `today` is injected for the separate
+   * calendar-week marker, not used in the reach calculation itself.
+   */
+  function buildCheckpoints(syllabusRows, logs, today) {
+    const checkpoints = syllabusRows
+      .slice()
+      .sort((a, b) => (parseFloat(a["Week"]) || 0) - (parseFloat(b["Week"]) || 0))
+      .map(row => ({
+        week: row["Week"],
+        rawDate: parseGvizDate(row["Date"]),
+        targetDate: formatGvizDate(row["Date"]),
+        topic: row["Topic"] || "",
+        expectedStage: (row["Expected Stage"] || "").trim(),
+        reached: false,
+        actualDate: null,
+        debrief: "",
+      }));
+
+    // Walk logs oldest-first so the earliest log claims the earliest
+    // matching checkpoint — this is what prevents one entry from lighting
+    // every week that shares its stage.
+    logs
+      .filter(l => tsOf(l))
+      .sort(byTimestamp)
+      .forEach(l => {
+        const stage = (l["Biodesign Stage"] || "").trim().toLowerCase();
+        if (!stage) return;
+        const cp = checkpoints.find(c =>
+          !c.reached && c.expectedStage.toLowerCase() === stage
+        );
+        if (cp) {
+          cp.reached = true;
+          cp.actualDate = formatGvizDate(l["Timestamp"]);
+          cp.debrief = l["Description"] || "";
+        }
+      });
+
+    return checkpoints;
+  }
+
+  /**
+   * Fill percentage for the roadmap bar: share of checkpoints reached.
+   *
+   * Previously driven by the INDEX of the furthest reached node (N-1
+   * segments), which meant a single early or out-of-order entry could push
+   * the bar to 100% while most checkpoints were still empty, and made one
+   * reached checkpoint out of many read as barely-started. reachedCount /
+   * total reflects actual completion share instead.
+   */
+  function roadmapFillPct(checkpoints) {
+    if (!checkpoints.length) return 0;
+    const reachedCount = checkpoints.filter(c => c.reached).length;
+    return (reachedCount / checkpoints.length) * 100;
+  }
+
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get("id");
 
@@ -179,7 +263,7 @@
         document.getElementById("roadmap-fill").style.display = "none";
         document.getElementById("roadmap-detail").style.display = "none";
 
-        const sortedLogs = logs.slice().sort((a, b) => String(a["Timestamp"]).localeCompare(String(b["Timestamp"])));
+        const sortedLogs = logs.slice().sort(byTimestamp);
         const nodesEl = document.getElementById("roadmap-nodes");
         if (!sortedLogs.length) {
           nodesEl.innerHTML = `<p class="state-message-dark">No progress entries logged yet.</p>`;
@@ -198,36 +282,14 @@
       } else {
       // ── Standard track: Roadmap ──
       // Syllabus Map rows are the fixed checkpoints (ordered by Week).
-      // A checkpoint is "reached" if there's an Update Log entry for this
-      // project whose Biodesign Stage matches the checkpoint's Expected
-      // Stage (case-insensitive). The earliest such entry's Timestamp is
-      // the actual date reached; its Description is the debrief.
-      const checkpoints = syllabus
-        .slice()
-        .sort((a, b) => (parseFloat(a["Week"]) || 0) - (parseFloat(b["Week"]) || 0))
-        .map(row => {
-          const expectedStage = (row["Expected Stage"] || "").trim();
-          const matches = logs
-            .filter(l => (l["Biodesign Stage"] || "").trim().toLowerCase() === expectedStage.toLowerCase())
-            .sort((a, b) => String(a["Timestamp"]).localeCompare(String(b["Timestamp"])));
-          const reached = matches.length > 0;
-          return {
-            week: row["Week"],
-            rawDate: parseGvizDate(row["Date"]),
-            targetDate: formatGvizDate(row["Date"]),
-            topic: row["Topic"] || "",
-            expectedStage,
-            reached,
-            actualDate: reached ? formatGvizDate(matches[0]["Timestamp"]) : null,
-            debrief: reached ? (matches[0]["Description"] || "") : "",
-          };
-        });
+      // See buildCheckpoints for the reach rules.
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const checkpoints = buildCheckpoints(syllabus, logs, today);
 
       // The calendar's current week, independent of this project's own
       // progress, so a project with no logs yet still shows where the
       // course actually is right now instead of defaulting to Week 1.
-      const today = new Date();
-      today.setHours(0,0,0,0);
       let calendarWeekIdx = -1;
       checkpoints.forEach((c, i) => { if (c.rawDate && c.rawDate <= today) calendarWeekIdx = i; });
 
@@ -250,10 +312,7 @@
             </div>`;
         }).join("");
 
-        const fillPct = checkpoints.length > 1
-          ? (lastReachedIdx >= 0 ? (lastReachedIdx / (checkpoints.length - 1)) * 100 : 0)
-          : 0;
-        fillEl.style.width = fillPct + "%";
+        fillEl.style.width = roadmapFillPct(checkpoints) + "%";
 
         function showDetail(idx) {
           const c = checkpoints[idx];
@@ -295,9 +354,19 @@
         presEl.innerHTML = `<p class="state-message-dark">No presentations scheduled yet.</p>`;
       }
     }).catch(err => {
-      console.error(err);
+      console.error("Failed to load project tabs:", err);
       document.getElementById("project-title").textContent = "Couldn't load project data";
-      document.getElementById("project-subtitle").textContent = "Try refreshing the page.";
+      document.getElementById("project-subtitle").innerHTML =
+        `<span class="state-error-dark"><strong>The tracker sheet didn't load.</strong>` +
+        `Nothing below is current. Try refreshing; if it persists, check that the sheet is still shared.</span>`;
+      // Replace every "Loading…" region so none of them sit there forever
+      // implying data is still on its way.
+      document.getElementById("roadmap-nodes").innerHTML =
+        `<p class="state-error-dark">Roadmap unavailable — data did not load.</p>`;
+      document.getElementById("presentations-row").innerHTML =
+        `<p class="state-error-dark">Presentations unavailable — data did not load.</p>`;
+      ["stage-text","health-text","team-text","next-pres-text"]
+        .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
     });
   }
 </script>

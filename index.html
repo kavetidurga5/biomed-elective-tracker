@@ -124,6 +124,9 @@
   <p style="font-size:11px; color: rgba(255,255,255,0.24); letter-spacing:0.05em;">
     ENRH 116 &nbsp;·&nbsp; UT Southwestern Medical School &nbsp;·&nbsp; Kaveti · Zhao · Wu · Garlapati
   </p>
+  <p id="last-synced" style="font-size:10.5px; color: rgba(255,255,255,0.18); letter-spacing:0.05em; margin-top:8px;">
+    Syncing…
+  </p>
 </footer>
 
 <script src="assets/js/sheets.js"></script>
@@ -161,6 +164,32 @@
   function fmtDate(dt) {
     if (!dt) return "TBD";
     return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  // Render a visible failure. Distinct from the empty state on purpose:
+  // "we could not load this" must never look like "there is nothing here".
+  function renderError(el, what, err) {
+    console.error(what, err);
+    const hint = err && err.reason === "envelope"
+      ? "The sheet may no longer be shared publicly."
+      : "Check your connection, or whether the tracker sheet is still shared.";
+    el.innerHTML =
+      `<div class="state-error"><strong>Couldn't load ${escapeHtml(what)}.</strong>${escapeHtml(hint)} This is a loading failure, not an empty list.</div>`;
+  }
+
+  // Stamp the footer once anything has successfully loaded.
+  function markSynced() {
+    const el = document.getElementById("last-synced");
+    const t = typeof getLastSyncedAt === "function" ? getLastSyncedAt() : null;
+    if (!el) return;
+    el.textContent = t
+      ? `Last synced ${t.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+      : "Not synced — data below may be missing";
+  }
+
+  function markSyncFailed() {
+    const el = document.getElementById("last-synced");
+    if (el) el.textContent = "Sync failed — some data on this page did not load";
   }
 
   // Fixed deliverable dates from the syllabus (Section III). Hardcoded
@@ -221,9 +250,13 @@
 
     const last = weeks[weeks.length - 1];
     document.getElementById("week-end-label").textContent = `${last.topic && last.topic.includes("Pitch") ? "Pitch Day" : "Final week"}: ${fmtDate(last.date)}`;
+    markSynced();
   }).catch(err => {
     console.error(err);
     document.getElementById("week-heading").textContent = "Couldn't load syllabus";
+    document.getElementById("week-topic").textContent =
+      "The tracker sheet did not load. The week shown may be stale or absent — this is a failure, not an empty schedule.";
+    markSyncFailed();
   });
 
   // ── Stats row ──────────────────────────────────────────────────
@@ -241,23 +274,44 @@
     chips[1].textContent = counts.green;
     chips[2].textContent = counts.yellow;
     chips[3].textContent = counts.red;
-  }).catch(err => console.error(err));
+    markSynced();
+  }).catch(err => {
+    console.error(err);
+    // Blank the chips rather than leaving zeros: 0/0/0/0 reads as a real
+    // (if grim) state, which is exactly the confusion P1-5 is about.
+    document.querySelectorAll("#stats-row .num").forEach(n => { n.textContent = "—"; });
+    document.getElementById("stats-row").insertAdjacentHTML("afterend",
+      `<div class="state-error">Couldn't load project stats. These are not real zeros — the data did not load.</div>`);
+    markSyncFailed();
+  });
 
   // ── Immediate alerts ────────────────────────────────────────────
   // Shows only entries flagged as needing admin support. Matches both
   // "Needs Admin Support" (new form label) and "Blocker" (old label,
   // in case earlier log rows still use it) so nothing gets missed.
-  fetchTab(GIDS.updateLog).then(rows => {
-    const container = document.getElementById("activity-list");
-    const alerts = rows
-      .map(r => ({ ...r, _ts: parseGvizDate(r["Timestamp"]) || new Date(r["Timestamp"]) }))
+  // Pure: selects the alert rows to render. Extracted so the null-timestamp
+  // behaviour is testable without a DOM or a live Sheet.
+  function selectAlerts(rows, limit) {
+    return rows
+      // No `|| new Date(r["Timestamp"])` fallback here: gviz returns null
+      // for an empty Timestamp cell, and new Date(null) is 1970-01-01 — a
+      // valid Date that survives the isNaN filter and renders as a 1970
+      // alert on the public dashboard. parseGvizDate already handles every
+      // date format present in this workbook, so a null result means the
+      // row genuinely has no usable date and must be dropped.
+      .map(r => ({ ...r, _ts: parseGvizDate(r["Timestamp"]) }))
       .filter(r => {
         const type = (r["Entry Type"] || "").toLowerCase();
         return type.includes("admin") || type.includes("blocker");
       })
-      .filter(r => r._ts && !isNaN(r._ts))
+      .filter(r => r._ts instanceof Date && !isNaN(r._ts))
       .sort((a, b) => b._ts - a._ts)
-      .slice(0, 6);
+      .slice(0, limit);
+  }
+
+  fetchTab(GIDS.updateLog).then(rows => {
+    const container = document.getElementById("activity-list");
+    const alerts = selectAlerts(rows, 6);
 
     if (!alerts.length) {
       container.innerHTML = `<p class="state-message">No open requests right now.</p>`;
@@ -266,12 +320,13 @@
 
     container.innerHTML = alerts.map(r => `
       <div class="activity-item">
-        <div class="activity-meta">${escapeHtml(r["Student Name"] || r["Name"])} · ${escapeHtml(r["Project"])} · ${fmtDate(r._ts)}</div>
+        <div class="activity-meta">${escapeHtml(r["Project"])} · ${fmtDate(r._ts)}</div>
         <div class="activity-desc">${escapeHtml(r["Description"] || "")}</div>
       </div>`).join("");
+    markSynced();
   }).catch(err => {
-    console.error(err);
-    document.getElementById("activity-list").innerHTML = `<p class="state-message">Couldn't load alerts.</p>`;
+    renderError(document.getElementById("activity-list"), "alerts", err);
+    markSyncFailed();
   });
 
   // ── Upcoming: guest speakers, team check ins, symposium ─────────
