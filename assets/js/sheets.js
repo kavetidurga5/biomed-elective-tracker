@@ -160,7 +160,7 @@ const STALENESS_LABEL = {
 // every downstream metric degrades." Set this once, here, and the
 // "Submit Weekly Update" button on all three pages activates itself —
 // no other file needs to change.
-const UPDATE_FORM_URL = ""; // e.g. "https://forms.gle/xxxxxxxxxxxx"
+const UPDATE_FORM_URL = "https://forms.gle/jUMKPpwyNTsM5SVMA"; // e.g. "https://forms.gle/xxxxxxxxxxxx"
 // ──────────────────────────────────────────────────────────────────
 
 /**
