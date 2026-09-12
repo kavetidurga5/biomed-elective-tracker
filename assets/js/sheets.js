@@ -56,7 +56,12 @@ function formatGvizDate(value) {
  * @returns {Promise<Array<Object>>}
  */
 async function fetchTab(gid) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`;
+  // headers=1 tells gviz exactly how many header rows to expect. Without
+  // it, gviz guesses based on column data density — and on tabs like
+  // Roster, where many rows have blank Project/Status/Date cells, it
+  // guesses wrong, folding dozens of real rows into a single garbled
+  // "header" and silently dropping them from the results.
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}&headers=1`;
 
   let res;
   try {
@@ -94,13 +99,13 @@ async function fetchTab(gid) {
     // gviz auto-detected a real header row on this tab (e.g. bold/frozen
     // formatting) — cols[].label is already correct, and table.rows is
     // pure data with no header row mixed in.
-    headers = table.cols.map(c => c.label || "");
+    headers = table.cols.map(c => (c.label || "").trim());
     dataRows = table.rows || [];
   } else {
     // No auto-detected header on this tab (plain-text header row) — fall
     // back to treating the first row ourselves as the header row.
     if (!table.rows || table.rows.length < 2) return [];
-    headers = table.rows[0].c.map(cell => (cell ? cell.v : "") || "");
+    headers = table.rows[0].c.map(cell => ((cell ? cell.v : "") || "").trim());
     dataRows = table.rows.slice(1);
   }
 
