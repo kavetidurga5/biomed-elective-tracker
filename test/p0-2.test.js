@@ -16,8 +16,8 @@ const { load, check, checkTrue, section } = require("./harness");
 const F = require("./fixtures");
 
 const ctx = load([
-  { file: "assets/js/sheets.js", fns: ["formatGvizDate"] },
-  { file: "projects/project.html", fns: ["parseGvizDate", "byTimestamp", "buildCheckpoints", "roadmapFillPct"], consts: ["tsOf"] },
+  { file: "assets/js/sheets.js", fns: ["formatGvizDate", "parseGvizDate"] },
+  { file: "projects/project.html", fns: ["byTimestamp", "buildCheckpoints", "roadmapFillPct"], consts: ["tsOf"] },
 ]);
 
 const TODAY = new Date(2026, 9, 3); // Oct 3 2026, mid-semester

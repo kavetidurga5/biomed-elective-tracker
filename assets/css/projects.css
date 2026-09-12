@@ -241,3 +241,11 @@ body {
   border-radius: 8px; padding: 12px 14px; margin: 8px 0; line-height: 1.5;
 }
 .state-error-dark strong { display: block; margin-bottom: 3px; color: #ff8c82; }
+
+/* ── M-1: Days Since Last Update badge ────────────────────────────── */
+.staleness {
+  display: inline-block; font-size: 11px; margin: 6px 0 0;
+  color: var(--slate);
+}
+.staleness-never { color: var(--ghost); font-weight: 600; }
+.staleness-red { color: #b02020; font-weight: 600; }

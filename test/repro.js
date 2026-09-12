@@ -4,7 +4,7 @@
 const { load } = require("./harness");
 const F = require("./fixtures");
 
-const ctx = load([{ file: "index.html", fns: ["parseGvizDate"] }]);
+const ctx = load([{ file: "assets/js/sheets.js", fns: ["parseGvizDate"] }]);
 
 console.log("P0-1 — lexicographic sort of gviz timestamps");
 const stringSorted = F.SORT_LOGS.slice()

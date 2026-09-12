@@ -48,8 +48,7 @@
   .week-stage-pill { display: inline-block; margin-top: 16px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.24); border-radius: 100px; padding: 5px 14px; font-size: 12px; font-weight: 600; }
 
   /* Stat chips */
-  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-  @media (max-width: 700px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+  .stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
   .stat-chip { background: var(--white); border-radius: var(--r); border: 1px solid #E4E9F0; padding: 18px 20px; }
   .stat-chip .num { font-family: 'DM Serif Display', serif; font-size: 30px; line-height: 1; margin-bottom: 4px; }
   .stat-chip .label { font-size: 12px; color: var(--slate); }
@@ -83,6 +82,7 @@
   <nav class="site-topbar-nav">
     <a href="index.html" class="active">Dashboard</a>
     <a href="projects/index.html">Projects</a>
+    <a href="#" id="submit-update-link" target="_blank" rel="noopener" style="display:none;">Submit Weekly Update</a>
   </nav>
 </header>
 
@@ -99,22 +99,20 @@
 
   <div class="stats-row" id="stats-row">
     <div class="stat-chip"><div class="num">—</div><div class="label">Active projects</div></div>
-    <div class="stat-chip health-green"><div class="num">—</div><div class="label">On track</div></div>
-    <div class="stat-chip health-yellow"><div class="num">—</div><div class="label">At risk</div></div>
-    <div class="stat-chip health-red"><div class="num">—</div><div class="label">Blocked / silent</div></div>
+    <div class="stat-chip health-red"><div class="num">—</div><div class="label">Needs attention</div></div>
   </div>
 
   <div class="dash-grid">
     <div class="card">
       <p class="card-eyebrow">Immediate alerts</p>
       <h3>Teams needing admin support</h3>
-      <div id="activity-list"><p class="state-message">Loading…</p></div>
+      <div id="activity-list" aria-live="polite"><p class="state-message">Loading…</p></div>
     </div>
 
     <div class="card">
       <p class="card-eyebrow">Upcoming</p>
       <h3>Guest speakers, check ins, symposium</h3>
-      <div id="presentations-list"><p class="state-message">Loading…</p></div>
+      <div id="presentations-list" aria-live="polite"><p class="state-message">Loading…</p></div>
     </div>
   </div>
 
@@ -131,35 +129,16 @@
 
 <script src="assets/js/sheets.js"></script>
 <script>
-  function escapeHtml(str) {
-    if (str == null) return "";
-    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  wireSubmitUpdateLink();
 
-  // Parse a date value from a gviz cell. Handles three cases seen across
-  // this workbook's tabs: the gviz literal "Date(y,m,d)" (true Date cells),
-  // a plain ISO string like "2026-09-03" (the Syllabus Map tab stores dates
-  // as text, not real Date cells, so gviz returns them as-is), and anything
-  // else JS can parse as a fallback.
-  function parseGvizDate(value) {
-    if (value == null) return null;
-    if (value instanceof Date) return value;
-    if (typeof value !== "string") return null;
+  // escapeHtml and safeLink are defined once, in assets/js/sheets.js, and
+  // loaded globally via <script src="assets/js/sheets.js"> above. They
+  // used to be duplicated in each of the three pages; this is the shared
+  // copy.
 
-    if (value.startsWith("Date(")) {
-      const nums = value.slice(5, -1).split(",").map(n => parseInt(n, 10));
-      const [y, m, d] = nums;
-      return new Date(y, m, d);
-    }
-
-    const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) {
-      return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
-    }
-
-    const fallback = new Date(value);
-    return isNaN(fallback) ? null : fallback;
-  }
+  // parseGvizDate is defined once, in assets/js/sheets.js, and loaded
+  // globally via <script src="assets/js/sheets.js"> above. It used to be
+  // duplicated here and in project.html; this is the shared copy.
 
   function fmtDate(dt) {
     if (!dt) return "TBD";
@@ -203,7 +182,21 @@
   ];
 
   // ── Where We Are Now ──────────────────────────────────────────
-  fetchTab(GIDS.syllabus).then(rows => {
+  // Pure: classify where "today" sits relative to the syllabus weeks.
+  // Extracted so pre-semester/mid-semester/post-semester selection is
+  // testable without a DOM.
+  function classifyWeekState(weeks, today) {
+    if (!weeks.length) return { state: "no-data" };
+    const firstWeek = weeks[0];
+    const lastWeek = weeks[weeks.length - 1];
+    if (today < firstWeek.date) return { state: "pre-semester", firstWeek, lastWeek };
+    if (today > lastWeek.date) return { state: "post-semester", firstWeek, lastWeek };
+    let currentIndex = 0;
+    weeks.forEach((w, i) => { if (w.date <= today) currentIndex = i; });
+    return { state: "in-progress", current: weeks[currentIndex], currentIndex, totalWeeks: weeks.length };
+  }
+
+  withTimeout(fetchTab(GIDS.syllabus), 15000, "syllabus").then(rows => {
     const today = new Date();
     today.setHours(0,0,0,0);
 
@@ -220,15 +213,54 @@
 
     if (!weeks.length) {
       document.getElementById("week-heading").textContent = "Syllabus not loaded";
+      renderUpcoming(buildUpcomingEvents([], DELIVERABLES, today));
       return;
     }
 
-    let currentIndex = 0;
-    weeks.forEach((w, i) => { if (w.date <= today) currentIndex = i; });
-    const current = weeks[currentIndex];
+    renderUpcoming(buildUpcomingEvents(weeks, DELIVERABLES, today));
 
+    const classification = classifyWeekState(weeks, today);
     const totalWeeks = weeks.length;
-    const pct = Math.round((current.week / totalWeeks) * 100);
+
+    // Pre-semester: the "last week whose date <= today" scan finds nothing
+    // before the semester starts and would otherwise silently default to
+    // index 0, claiming "Week 1" before the course had even begun.
+    if (classification.state === "pre-semester") {
+      const { firstWeek, lastWeek } = classification;
+      document.getElementById("week-heading").textContent = "Course starts soon";
+      document.getElementById("week-topic").textContent =
+        `First session: ${fmtDate(firstWeek.date)} — ${firstWeek.topic || ""}`;
+      document.getElementById("week-progress-fill").style.width = "0%";
+      document.getElementById("week-progress-label").innerHTML = `<span>Not started yet</span>`;
+      document.getElementById("week-stage-pill").outerHTML =
+        `<span class="week-stage-pill" id="week-stage-pill">Expected Stage: —</span>`;
+      document.getElementById("week-end-label").textContent = `Pitch Day: ${fmtDate(lastWeek.date)}`;
+      markSynced();
+      return;
+    }
+
+    // Post-semester: the scan otherwise clamps to the last index forever
+    // once the final week passes, claiming "Week 12 of 12" indefinitely
+    // with no indication the course had actually ended.
+    if (classification.state === "post-semester") {
+      const { lastWeek } = classification;
+      document.getElementById("week-heading").textContent = "Semester complete";
+      document.getElementById("week-topic").textContent =
+        `Final session: ${lastWeek.topic || ""} (${fmtDate(lastWeek.date)})`;
+      document.getElementById("week-progress-fill").style.width = "100%";
+      document.getElementById("week-progress-label").innerHTML =
+        `<span>Week ${totalWeeks} of ${totalWeeks} — complete</span>`;
+      document.getElementById("week-stage-pill").outerHTML =
+        `<span class="week-stage-pill" id="week-stage-pill">Expected Stage: Complete</span>`;
+      document.getElementById("week-end-label").textContent = `Pitch Day: ${fmtDate(lastWeek.date)}`;
+      markSynced();
+      return;
+    }
+
+    const current = classification.current;
+    const currentIndex = classification.currentIndex;
+
+    const pct = Math.round(((parseFloat(current.week) || 0) / totalWeeks) * 100);
 
     document.getElementById("week-heading").textContent = `Week ${current.week} of ${totalWeeks}`;
     document.getElementById("week-topic").textContent = current.note
@@ -242,7 +274,7 @@
     const windowEnd = next ? next.date : new Date(current.date.getTime() + 7*24*60*60*1000);
     const dueThisWeek = DELIVERABLES.filter(d => d.date >= current.date && d.date < windowEnd);
 
-    const stagePillHtml = `<span class="week-stage-pill">Expected Stage: ${current.stage || "—"}</span>`;
+    const stagePillHtml = `<span class="week-stage-pill">Expected Stage: ${escapeHtml(current.stage) || "—"}</span>`;
     const deliverableHtml = dueThisWeek.map(d =>
       `<span class="week-stage-pill" style="background:rgba(232,160,32,0.22); border-color:rgba(232,160,32,0.4);">${escapeHtml(d.label)}</span>`
     ).join("");
@@ -256,28 +288,45 @@
     document.getElementById("week-heading").textContent = "Couldn't load syllabus";
     document.getElementById("week-topic").textContent =
       "The tracker sheet did not load. The week shown may be stale or absent — this is a failure, not an empty schedule.";
+    renderError(document.getElementById("presentations-list"), "upcoming events", err);
     markSyncFailed();
   });
 
   // ── Stats row ──────────────────────────────────────────────────
-  fetchTab(GIDS.dashboard).then(rows => {
-    const active = rows.filter(r => r["Project"]);
-    const counts = { green: 0, yellow: 0, red: 0 };
-    active.forEach(r => {
-      const h = (r["Overall Health"] || "").toLowerCase();
-      if (h.includes("green")) counts.green++;
-      else if (h.includes("yellow")) counts.yellow++;
-      else if (h.includes("red")) counts.red++;
+  // Pure: given Dashboard + Update Log rows, returns the two reconciling
+  // numbers. "Active" excludes Complete projects — a completed project's
+  // stale log is a false alarm, not a real issue. "Needs attention" is
+  // driven by M-1 (days since last update: red or never-logged), not by
+  // self-reported Overall Health — a team can report Green right up until
+  // the week they report Red, but silence shows up immediately.
+  function computeDashboardStats(dashboardRows, updateLogRows, today) {
+    const active = dashboardRows.filter(r => {
+      const name = (r["Project"] || "").trim();
+      if (!name) return false;
+      return (r["Project Status"] || "").trim().toLowerCase() !== "complete";
     });
+    const needsAttention = active.filter(r => {
+      const days = daysSinceLastUpdate(updateLogRows, r["Project"], today);
+      const level = stalenessLevel(days);
+      return level === "red" || level === "never";
+    });
+    return { activeCount: active.length, needsAttentionCount: needsAttention.length };
+  }
+
+  Promise.all([
+    withTimeout(fetchTab(GIDS.dashboard), 15000, "dashboard"),
+    withTimeout(fetchTab(GIDS.updateLog), 15000, "update log"),
+  ]).then(([dashboardRows, updateLogRows]) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { activeCount, needsAttentionCount } = computeDashboardStats(dashboardRows, updateLogRows, today);
     const chips = document.querySelectorAll("#stats-row .num");
-    chips[0].textContent = active.length;
-    chips[1].textContent = counts.green;
-    chips[2].textContent = counts.yellow;
-    chips[3].textContent = counts.red;
+    chips[0].textContent = activeCount;
+    chips[1].textContent = needsAttentionCount;
     markSynced();
   }).catch(err => {
     console.error(err);
-    // Blank the chips rather than leaving zeros: 0/0/0/0 reads as a real
+    // Blank the chips rather than leaving zeros: 0/0 reads as a real
     // (if grim) state, which is exactly the confusion P1-5 is about.
     document.querySelectorAll("#stats-row .num").forEach(n => { n.textContent = "—"; });
     document.getElementById("stats-row").insertAdjacentHTML("afterend",
@@ -289,10 +338,22 @@
   // Shows only entries flagged as needing admin support. Matches both
   // "Needs Admin Support" (new form label) and "Blocker" (old label,
   // in case earlier log rows still use it) so nothing gets missed.
-  // Pure: selects the alert rows to render. Extracted so the null-timestamp
-  // behaviour is testable without a DOM or a live Sheet.
+  //
+  // Resolution state: the Update Log has no Status column yet (that's a
+  // schema addition — see the remediation brief §5, Durga's action). This
+  // reads a Status cell defensively: until that column exists, every row
+  // has Status === undefined and is treated as open, so behaviour is
+  // unchanged today and starts working the moment the column is added —
+  // no second code change required.
+  function isResolved(r) {
+    return (r["Status"] || "").trim().toLowerCase() === "resolved";
+  }
+
+  // Pure: selects the OPEN alert rows to render, and separately counts
+  // resolved ones so they can be shown as a quiet tally instead of either
+  // disappearing entirely or clogging the open list forever.
   function selectAlerts(rows, limit) {
-    return rows
+    const matching = rows
       // No `|| new Date(r["Timestamp"])` fallback here: gviz returns null
       // for an empty Timestamp cell, and new Date(null) is 1970-01-01 — a
       // valid Date that survives the isNaN filter and renders as a 1970
@@ -304,17 +365,26 @@
         const type = (r["Entry Type"] || "").toLowerCase();
         return type.includes("admin") || type.includes("blocker");
       })
-      .filter(r => r._ts instanceof Date && !isNaN(r._ts))
-      .sort((a, b) => b._ts - a._ts)
-      .slice(0, limit);
+      .filter(r => r._ts instanceof Date && !isNaN(r._ts));
+
+    const open = matching.filter(r => !isResolved(r));
+    const resolvedCount = matching.length - open.length;
+
+    return {
+      alerts: open.sort((a, b) => b._ts - a._ts).slice(0, limit),
+      resolvedCount,
+    };
   }
 
-  fetchTab(GIDS.updateLog).then(rows => {
+  withTimeout(fetchTab(GIDS.updateLog), 15000, "alerts").then(rows => {
     const container = document.getElementById("activity-list");
-    const alerts = selectAlerts(rows, 6);
+    const { alerts, resolvedCount } = selectAlerts(rows, 6);
+    const resolvedNote = resolvedCount
+      ? `<p class="state-message" style="padding-top:2px;">${resolvedCount} resolved this semester</p>`
+      : "";
 
     if (!alerts.length) {
-      container.innerHTML = `<p class="state-message">No open requests right now.</p>`;
+      container.innerHTML = `<p class="state-message">No open requests right now.</p>${resolvedNote}`;
       return;
     }
 
@@ -322,41 +392,48 @@
       <div class="activity-item">
         <div class="activity-meta">${escapeHtml(r["Project"])} · ${fmtDate(r._ts)}</div>
         <div class="activity-desc">${escapeHtml(r["Description"] || "")}</div>
-      </div>`).join("");
+      </div>`).join("") + resolvedNote;
     markSynced();
   }).catch(err => {
     renderError(document.getElementById("activity-list"), "alerts", err);
     markSyncFailed();
   });
 
-  // ── Upcoming: guest speakers, team check ins, symposium ─────────
-  // Pulled from the fixed ENRH 116 Fall 2026 syllabus (not a live sheet
-  // tab, since these course level dates are set once for the semester).
-  // Update this array if the syllabus changes.
-  const COURSE_EVENTS = [
-    { date: new Date(2026, 8, 24),  label: "Guest Speaker: Human-Centered Design & Human Factors", type: "Guest Speaker" },
-    { date: new Date(2026, 9, 8),   label: "Workshop Field Trip", type: "Workshop" },
-    { date: new Date(2026, 9, 15),  label: "Guest Speaker: Dr. Ying", type: "Guest Speaker" },
-    { date: new Date(2026, 9, 22),  label: "Mid Semester Progress Check In (MedEd Innovation Studio)", type: "Team Check In" },
-    { date: new Date(2026, 10, 12), label: "Guest Speaker: Building a Business Model & Learning to Pitch", type: "Guest Speaker" },
-    { date: new Date(2026, 10, 19), label: "Pitch Day: Final Innovation Symposium", type: "Symposium" },
-  ];
+  // ── Upcoming: guest speakers, workshops, symposium ──────────────
+  // Previously a hardcoded array duplicating the Syllabus Map tab — a
+  // rescheduled guest speaker would make the dashboard lie. Now derived
+  // live from the same `weeks` array the week card already builds, keyed
+  // off keywords in each week's Topic.
+  //
+  // DELIVERABLES stays hardcoded below: the Syllabus Map tab has no
+  // per-deliverable rows, and a live Deliverables tab is a schema change
+  // under Durga's action (brief §5, unblocks M-3). Flagging rather than
+  // half-fixing: this is the one remaining hardcoded course-date source.
+  function classifyEventType(topic) {
+    const t = (topic || "").toLowerCase();
+    if (t.includes("guest speaker")) return "Guest Speaker";
+    if (t.includes("pitch day") || t.includes("symposium")) return "Symposium";
+    if (t.includes("workshop")) return "Workshop";
+    return "Class Session";
+  }
 
-  (function renderUpcoming() {
-    const container = document.getElementById("presentations-list");
-    const today = new Date();
-    today.setHours(0,0,0,0);
-
-    const upcoming = COURSE_EVENTS
-      .filter(e => e.date >= today)
+  function buildUpcomingEvents(weeks, deliverables, today) {
+    const courseEvents = weeks
+      .filter(w => /guest speaker|workshop|symposium|pitch day/i.test(w.topic || ""))
+      .map(w => ({ date: w.date, label: w.topic, type: classifyEventType(w.topic) }));
+    const deliverableEvents = deliverables.map(d => ({ date: d.date, label: d.label, type: "Deliverable" }));
+    return [...courseEvents, ...deliverableEvents]
+      .filter(e => e.date && e.date >= today)
       .sort((a, b) => a.date - b.date);
+  }
 
-    if (!upcoming.length) {
+  function renderUpcoming(events) {
+    const container = document.getElementById("presentations-list");
+    if (!events.length) {
       container.innerHTML = `<p class="state-message">Nothing left on the schedule.</p>`;
       return;
     }
-
-    container.innerHTML = upcoming.map(e => `
+    container.innerHTML = events.map(e => `
       <div class="presentation-item">
         <div>
           <div style="font-size:13.5px; font-weight:500;">${escapeHtml(e.label)}</div>
@@ -364,7 +441,7 @@
         </div>
         <div class="presentation-date">${fmtDate(e.date)}</div>
       </div>`).join("");
-  })();
+  }
 </script>
 
 </body>

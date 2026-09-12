@@ -29,7 +29,10 @@ function run() {
   checkTrue("source no longer references a bare Name fallback in the alerts render path",
     !extractAlertsTemplate(src).includes('r["Name"]'));
 
-  const ctx = load([{ file: "index.html", fns: ["escapeHtml", "parseGvizDate", "fmtDate"] }]);
+  const ctx = load([
+    { file: "assets/js/sheets.js", fns: ["parseGvizDate", "escapeHtml"] },
+    { file: "index.html", fns: ["fmtDate"] },
+  ]);
   const tpl = extractAlertsTemplate(src);
   const renderRow = new Function("r", "escapeHtml", "fmtDate",
     "return " + tpl.replace(/^r => /, "") + ";"

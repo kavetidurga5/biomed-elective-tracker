@@ -22,6 +22,7 @@
   <nav class="site-topbar-nav">
     <a href="../index.html">Dashboard</a>
     <a href="index.html" class="active">Projects</a>
+    <a href="#" id="submit-update-link" target="_blank" rel="noopener" style="display:none;">Submit Weekly Update</a>
   </nav>
 </header>
 
@@ -30,7 +31,7 @@
   <h1 class="projects-heading">Projects</h1>
   <p class="projects-sub">Live status across every Biomedical Innovations project — stage, health, and upcoming presentations, pulled directly from the team's tracker.</p>
 
-  <div id="project-cards">
+  <div id="project-cards" aria-live="polite">
     <p class="state-message">Loading projects…</p>
   </div>
 </main>
@@ -43,6 +44,8 @@
 
 <script src="../assets/js/sheets.js"></script>
 <script>
+  wireSubmitUpdateLink();
+
   function healthClass(value) {
     if (!value) return "health-unknown";
     const v = value.toLowerCase().trim();
@@ -52,21 +55,42 @@
     return "health-unknown";
   }
 
-  function escapeHtml(str) {
-    if (str == null) return "";
-    return String(str)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // escapeHtml and safeLink are defined once, in assets/js/sheets.js, and
+  // loaded globally via <script src="../assets/js/sheets.js"> above. They
+  // used to be duplicated in each of the three pages; this is the shared
+  // copy.
+
+  // Pure: rows with no usable Project name must never reach rendering.
+  function selectProjectRows(rows) {
+    return rows.filter(r => (r["Project"] || "").trim());
   }
 
-  fetchTab(GIDS.dashboard).then(rows => {
+  // M-1 badge markup. Pure aside from escapeHtml, which has no side effects.
+  function renderStalenessBadge(days) {
+    const level = stalenessLevel(days);
+    const text = days == null ? "Never logged" : `${days}d since last update`;
+    return `<span class="staleness staleness-${level}" title="${STALENESS_LABEL[level]}">${STALENESS_EMOJI[level]} ${escapeHtml(text)}</span>`;
+  }
+
+  withTimeout(fetchTab(GIDS.dashboard), 15000, "dashboard").then(dashboardRows => {
+    return withTimeout(fetchTab(GIDS.updateLog), 15000, "update log").then(updateLogRows => ({ dashboardRows, updateLogRows }));
+  }).then(({ dashboardRows, updateLogRows }) => {
     const container = document.getElementById("project-cards");
 
-    if (!rows.length) {
+    // A blank Project cell previously became an empty ghost card linking
+    // to project.html?id= (no project). Filter before checking emptiness
+    // so "5 rows, all blank" reports as no projects, not 5 broken cards.
+    const projects = selectProjectRows(dashboardRows);
+
+    if (!projects.length) {
       container.innerHTML = `<p class="state-message">No projects listed yet — check back once teams are assigned.</p>`;
       return;
     }
 
-    container.innerHTML = `<div class="project-grid">` + rows.map(r => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    container.innerHTML = `<div class="project-grid">` + projects.map(r => {
       const name = escapeHtml(r["Project"]);
       const stage = escapeHtml(r["Current Stage"]);
       const nextPres = formatGvizDate(r["Next Presentation"]);
@@ -78,11 +102,19 @@
       const healthLabel = isComplete ? "Pending" : (escapeHtml(r["Overall Health"]) || "Unknown");
       const healthCls = isComplete ? "health-unknown" : healthClass(r["Overall Health"]);
 
+      // M-1: silence is the leading indicator self-reported health can't
+      // show. Skip the badge on Complete projects — they aren't expected
+      // to keep logging.
+      const staleBadge = isComplete ? "" : renderStalenessBadge(
+        daysSinceLastUpdate(updateLogRows, r["Project"], today)
+      );
+
       return `
-        <a class="project-card" href="project.html?id=${encodeURIComponent(r["Project"] || "")}">
+        <a class="project-card" href="project.html?id=${encodeURIComponent((r["Project"] || "").trim())}">
           <h3>${name}</h3>
           <p class="stage">${stage}</p>
           <span class="health ${healthCls}">${healthLabel}</span>
+          ${staleBadge}
           <p class="next-pres">Next: ${nextPres || "TBD"}</p>
         </a>`;
     }).join("") + `</div>`;

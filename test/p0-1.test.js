@@ -6,7 +6,8 @@ const { load, check, section } = require("./harness");
 const F = require("./fixtures");
 
 const ctx = load([
-  { file: "projects/project.html", fns: ["parseGvizDate", "byTimestamp"], consts: ["tsOf"] },
+  { file: "assets/js/sheets.js", fns: ["parseGvizDate"] },
+  { file: "projects/project.html", fns: ["byTimestamp"], consts: ["tsOf"] },
 ]);
 
 function run() {
