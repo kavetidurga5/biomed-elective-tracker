@@ -38,22 +38,14 @@
   .card h3 { font-size: 15px; margin: 0 0 4px; color: var(--ink); }
 
   /* Where We Are Now */
-  .week-card { background: linear-gradient(135deg, var(--navy), #0A4AA8); color: var(--white); }
+  .week-card { background: linear-gradient(135deg, var(--navy), #0A4AA8); color: var(--white); margin-bottom: 24px; padding: 32px 40px; }
   .week-card .card-eyebrow { color: rgba(255,255,255,0.6); }
-  .week-card h2 { color: var(--white); }
-  .week-topic { font-size: 14px; color: rgba(255,255,255,0.82); margin: 0 0 18px; }
-  .week-progress-track { background: rgba(255,255,255,0.16); border-radius: 100px; height: 8px; overflow: hidden; margin-bottom: 8px; }
+  .week-card h2 { color: var(--white); font-size: 28px; }
+  .week-topic { font-size: 15px; color: rgba(255,255,255,0.82); margin: 0 0 20px; max-width: 640px; }
+  .week-progress-track { background: rgba(255,255,255,0.16); border-radius: 100px; height: 8px; overflow: hidden; margin-bottom: 8px; max-width: 480px; }
   .week-progress-fill { background: var(--gold); height: 100%; border-radius: 100px; transition: width 0.4s ease; }
-  .week-progress-label { font-size: 12px; color: rgba(255,255,255,0.62); display: flex; justify-content: space-between; }
+  .week-progress-label { font-size: 12px; color: rgba(255,255,255,0.62); display: flex; justify-content: space-between; max-width: 480px; }
   .week-stage-pill { display: inline-block; margin-top: 16px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.24); border-radius: 100px; padding: 5px 14px; font-size: 12px; font-weight: 600; }
-
-  /* Quick actions */
-  .actions-card { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
-  .action-btn { display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;
-    font-weight: 600; font-size: 14px; padding: 13px 18px; border-radius: 8px; transition: opacity 0.15s; }
-  .action-btn:hover { opacity: 0.88; }
-  .action-btn.primary { background: var(--teal); color: var(--white); }
-  .action-btn.secondary { background: var(--steel); color: var(--ink); }
 
   /* Stat chips */
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
@@ -70,8 +62,6 @@
   .activity-item:last-child { border-bottom: none; }
   .activity-meta { font-size: 11px; color: var(--ghost); margin-bottom: 3px; }
   .activity-desc { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
-  .activity-tag { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.04em; padding: 2px 8px; border-radius: 100px; background: var(--steel); color: var(--slate); margin-right: 6px; }
 
   .presentation-item { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #EEF1F5; }
   .presentation-item:last-child { border-bottom: none; }
@@ -98,21 +88,13 @@
 
 <main class="dash-wrap">
 
-  <div class="dash-grid">
-    <div class="card week-card">
-      <p class="card-eyebrow">Where we are now</p>
-      <h2 id="week-heading">Loading…</h2>
-      <p class="week-topic" id="week-topic">&nbsp;</p>
-      <div class="week-progress-track"><div class="week-progress-fill" id="week-progress-fill" style="width:0%"></div></div>
-      <div class="week-progress-label"><span id="week-progress-label">Week — of 12</span><span id="week-end-label">Pitch Day: —</span></div>
-      <span class="week-stage-pill" id="week-stage-pill">Expected Stage: —</span>
-    </div>
-
-    <div class="card actions-card">
-      <p class="card-eyebrow">Quick actions</p>
-      <a class="action-btn primary" href="https://forms.gle/nqYPiEWdewWx3dBe9" target="_blank" rel="noopener">Log a weekly update →</a>
-      <a class="action-btn secondary" href="projects/index.html">View all projects</a>
-    </div>
+  <div class="card week-card">
+    <p class="card-eyebrow">Where we are now</p>
+    <h2 id="week-heading">Loading…</h2>
+    <p class="week-topic" id="week-topic">&nbsp;</p>
+    <div class="week-progress-track"><div class="week-progress-fill" id="week-progress-fill" style="width:0%"></div></div>
+    <div class="week-progress-label"><span id="week-progress-label">Week — of 12</span><span id="week-end-label">Pitch Day: —</span></div>
+    <span class="week-stage-pill" id="week-stage-pill">Expected Stage: —</span>
   </div>
 
   <div class="stats-row" id="stats-row">
@@ -124,14 +106,14 @@
 
   <div class="dash-grid">
     <div class="card">
-      <p class="card-eyebrow">Recent activity</p>
-      <h3>Latest log entries</h3>
+      <p class="card-eyebrow">Immediate alerts</p>
+      <h3>Teams needing admin support</h3>
       <div id="activity-list"><p class="state-message">Loading…</p></div>
     </div>
 
     <div class="card">
       <p class="card-eyebrow">Upcoming</p>
-      <h3>Next presentations</h3>
+      <h3>Guest speakers, check ins, symposium</h3>
       <div id="presentations-list"><p class="state-message">Loading…</p></div>
     </div>
   </div>
@@ -222,61 +204,73 @@
     chips[3].textContent = counts.red;
   }).catch(err => console.error(err));
 
-  // ── Recent activity ────────────────────────────────────────────
+  // ── Immediate alerts ────────────────────────────────────────────
+  // Shows only entries flagged as needing admin support. Matches both
+  // "Needs Admin Support" (new form label) and "Blocker" (old label,
+  // in case earlier log rows still use it) so nothing gets missed.
   fetchTab(GIDS.updateLog).then(rows => {
     const container = document.getElementById("activity-list");
-    const withDates = rows
+    const alerts = rows
       .map(r => ({ ...r, _ts: parseGvizDate(r["Timestamp"]) || new Date(r["Timestamp"]) }))
+      .filter(r => {
+        const type = (r["Entry Type"] || "").toLowerCase();
+        return type.includes("admin") || type.includes("blocker");
+      })
       .filter(r => r._ts && !isNaN(r._ts))
       .sort((a, b) => b._ts - a._ts)
-      .slice(0, 5);
+      .slice(0, 6);
 
-    if (!withDates.length) {
-      container.innerHTML = `<p class="state-message">No log entries yet.</p>`;
+    if (!alerts.length) {
+      container.innerHTML = `<p class="state-message">No open requests right now.</p>`;
       return;
     }
 
-    container.innerHTML = withDates.map(r => `
+    container.innerHTML = alerts.map(r => `
       <div class="activity-item">
         <div class="activity-meta">${escapeHtml(r["Student Name"] || r["Name"])} · ${escapeHtml(r["Project"])} · ${fmtDate(r._ts)}</div>
-        <div><span class="activity-tag">${escapeHtml(r["Entry Type"] || "")}</span></div>
         <div class="activity-desc">${escapeHtml(r["Description"] || "")}</div>
       </div>`).join("");
   }).catch(err => {
     console.error(err);
-    document.getElementById("activity-list").innerHTML = `<p class="state-message">Couldn't load activity.</p>`;
+    document.getElementById("activity-list").innerHTML = `<p class="state-message">Couldn't load alerts.</p>`;
   });
 
-  // ── Upcoming presentations ──────────────────────────────────────
-  fetchTab(GIDS.presentations).then(rows => {
+  // ── Upcoming: guest speakers, team check ins, symposium ─────────
+  // Pulled from the fixed ENRH 116 Fall 2026 syllabus (not a live sheet
+  // tab, since these course level dates are set once for the semester).
+  // Update this array if the syllabus changes.
+  const COURSE_EVENTS = [
+    { date: new Date(2026, 8, 24),  label: "Guest Speaker: Human-Centered Design & Human Factors", type: "Guest Speaker" },
+    { date: new Date(2026, 9, 8),   label: "Workshop Field Trip", type: "Workshop" },
+    { date: new Date(2026, 9, 15),  label: "Guest Speaker: Dr. Ying", type: "Guest Speaker" },
+    { date: new Date(2026, 9, 22),  label: "Mid Semester Progress Check In (MedEd Innovation Studio)", type: "Team Check In" },
+    { date: new Date(2026, 10, 12), label: "Guest Speaker: Building a Business Model & Learning to Pitch", type: "Guest Speaker" },
+    { date: new Date(2026, 10, 19), label: "Pitch Day: Final Innovation Symposium", type: "Symposium" },
+  ];
+
+  (function renderUpcoming() {
     const container = document.getElementById("presentations-list");
     const today = new Date();
     today.setHours(0,0,0,0);
 
-    const upcoming = rows
-      .map(r => ({ ...r, _date: parseGvizDate(r["Date"]) }))
-      .filter(r => r._date && r._date >= today && (r["Prep Status"] || "").toLowerCase() !== "presented"
-        && r["Project"] && !String(r["Project"]).includes("[COPY"))
-      .sort((a, b) => a._date - b._date)
-      .slice(0, 4);
+    const upcoming = COURSE_EVENTS
+      .filter(e => e.date >= today)
+      .sort((a, b) => a.date - b.date);
 
     if (!upcoming.length) {
-      container.innerHTML = `<p class="state-message">Nothing scheduled right now.</p>`;
+      container.innerHTML = `<p class="state-message">Nothing left on the schedule.</p>`;
       return;
     }
 
-    container.innerHTML = upcoming.map(r => `
+    container.innerHTML = upcoming.map(e => `
       <div class="presentation-item">
         <div>
-          <div style="font-size:13.5px; font-weight:500;">${escapeHtml(r["Project"])}</div>
-          <div style="font-size:12px; color:var(--ghost);">${escapeHtml(r["Presentation Type"] || "")}</div>
+          <div style="font-size:13.5px; font-weight:500;">${escapeHtml(e.label)}</div>
+          <div style="font-size:12px; color:var(--ghost);">${escapeHtml(e.type)}</div>
         </div>
-        <div class="presentation-date">${fmtDate(r._date)}</div>
+        <div class="presentation-date">${fmtDate(e.date)}</div>
       </div>`).join("");
-  }).catch(err => {
-    console.error(err);
-    document.getElementById("presentations-list").innerHTML = `<p class="state-message">Couldn't load presentations.</p>`;
-  });
+  })();
 </script>
 
 </body>
