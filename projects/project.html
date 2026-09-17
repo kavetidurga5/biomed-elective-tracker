@@ -55,37 +55,61 @@
       </div>
     </div>
 
-    <p class="conf-heading" id="roadmap-heading">Roadmap</p>
-    <p class="roadmap-note" id="roadmap-note" style="display:none;"></p>
-    <div class="roadmap-wrap">
-      <div class="roadmap-track" id="roadmap-track">
-        <div class="roadmap-line-bg"></div>
-        <div class="roadmap-line-fill" id="roadmap-fill"></div>
-        <div class="roadmap-nodes" id="roadmap-nodes" aria-live="polite">
-          <p class="state-message-dark">Loading roadmap…</p>
+    <div class="portal-tabs" id="portal-tabs" role="tablist">
+      <button class="portal-tab active" id="tab-btn-overview" role="tab" aria-selected="true" aria-controls="tab-panel-overview">Overview</button>
+      <button class="portal-tab" id="tab-btn-notes" role="tab" aria-selected="false" aria-controls="tab-panel-notes">Meeting Notes &amp; Milestones</button>
+      <button class="portal-tab" id="tab-btn-team" role="tab" aria-selected="false" aria-controls="tab-panel-team">Team</button>
+    </div>
+
+    <div class="portal-panel" id="tab-panel-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
+      <p class="conf-heading" id="roadmap-heading">Roadmap</p>
+      <p class="roadmap-note" id="roadmap-note" style="display:none;"></p>
+      <div class="roadmap-wrap">
+        <div class="roadmap-track" id="roadmap-track">
+          <div class="roadmap-line-bg"></div>
+          <div class="roadmap-line-fill" id="roadmap-fill"></div>
+          <div class="roadmap-nodes" id="roadmap-nodes" aria-live="polite">
+            <p class="state-message-dark">Loading roadmap…</p>
+          </div>
+        </div>
+        <div class="roadmap-detail" id="roadmap-detail"></div>
+      </div>
+
+      <div id="poster-section" style="display:none;">
+        <p class="conf-heading">Poster</p>
+        <div class="poster-wrap">
+          <a class="poster-frame" id="poster-link" href="#" target="_blank" rel="noopener">
+            <img id="poster-img" src="" alt="Project poster"/>
+          </a>
+          <p class="poster-link-label">Click to view full poster (PDF)</p>
         </div>
       </div>
-      <div class="roadmap-detail" id="roadmap-detail"></div>
-    </div>
 
-    <div id="poster-section" style="display:none;">
-      <p class="conf-heading">Poster</p>
-      <div class="poster-wrap">
-        <a class="poster-frame" id="poster-link" href="#" target="_blank" rel="noopener">
-          <img id="poster-img" src="" alt="Project poster"/>
-        </a>
-        <p class="poster-link-label">Click to view full poster (PDF)</p>
+      <p class="conf-heading">Deliverables</p>
+      <div class="deliverables-list" id="deliverables-list" aria-live="polite">
+        <p class="state-message-dark">Loading…</p>
+      </div>
+
+      <p class="conf-heading">Presentations</p>
+      <div class="conf-row" id="presentations-row" aria-live="polite">
+        <p class="state-message-dark">Loading…</p>
       </div>
     </div>
 
-    <p class="conf-heading">Deliverables</p>
-    <div class="deliverables-list" id="deliverables-list" aria-live="polite">
-      <p class="state-message-dark">Loading…</p>
+    <div class="portal-panel" id="tab-panel-notes" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-notes">
+      <p class="conf-heading">Meeting Notes &amp; Milestones</p>
+      <p class="portal-panel-intro">Every logged update for this project, in order — this is the team's running record, separate from the roadmap's checkpoint view above.</p>
+      <div class="milestone-list" id="milestone-feed-list" aria-live="polite">
+        <p class="state-message-dark">Loading…</p>
+      </div>
     </div>
 
-    <p class="conf-heading">Presentations</p>
-    <div class="conf-row" id="presentations-row" aria-live="polite">
-      <p class="state-message-dark">Loading…</p>
+    <div class="portal-panel" id="tab-panel-team" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-team">
+      <p class="conf-heading">Team</p>
+      <p class="portal-panel-intro">The students building this project.</p>
+      <div class="team-grid" id="team-grid" aria-live="polite">
+        <p class="state-message-dark">Loading…</p>
+      </div>
     </div>
   </div>
 </section>
@@ -234,6 +258,71 @@
   function fmtShortDate(dt) {
     return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
+
+  // ── Portal tabs: Overview / Meeting Notes & Milestones / Team ──────
+  // Simple show/hide; no router, no state beyond which button is active.
+  function wireTabs() {
+    const tabs = [
+      { btn: "tab-btn-overview", panel: "tab-panel-overview" },
+      { btn: "tab-btn-notes", panel: "tab-panel-notes" },
+      { btn: "tab-btn-team", panel: "tab-panel-team" },
+    ];
+    tabs.forEach(({ btn, panel }) => {
+      document.getElementById(btn).addEventListener("click", () => {
+        tabs.forEach(({ btn: b, panel: p }) => {
+          const isActive = b === btn;
+          document.getElementById(b).classList.toggle("active", isActive);
+          document.getElementById(b).setAttribute("aria-selected", String(isActive));
+          document.getElementById(p).style.display = isActive ? "block" : "none";
+        });
+      });
+    });
+  }
+
+  // ── Meeting Notes & Milestones tab (buildMilestoneFeed lives in sheets.js) ──
+  function renderMilestoneFeedTab(el, feed) {
+    if (!feed.length) {
+      el.innerHTML = `<p class="state-message-dark">No updates logged yet.</p>`;
+      return;
+    }
+    el.innerHTML = feed.map(f => `
+      <div class="milestone-item">
+        <div class="milestone-dot"></div>
+        <div>
+          <div class="milestone-date">${escapeHtml(f.date || "Undated")}${f.stage ? " · " + escapeHtml(f.stage) : ""}</div>
+          <div class="milestone-stage">${escapeHtml(f.entryType)}</div>
+          <div class="milestone-desc">${escapeHtml(f.description) || "<em>No description logged.</em>"}</div>
+        </div>
+      </div>`).join("");
+  }
+
+  // ── Team tab (buildTeamRoster lives in sheets.js) ───────────────────
+  // Headshots are manually uploaded to assets/img/team/ (no student
+  // upload form yet — see project notes). A missing/mistyped filename
+  // falls back to an initials avatar rather than a broken-image icon.
+  function initialsOf(name) {
+    return name.split(/\s+/).filter(Boolean).map(p => p[0].toUpperCase()).slice(0, 2).join("");
+  }
+
+  function renderTeamTab(el, team) {
+    if (!team.length) {
+      el.innerHTML = `<p class="state-message-dark">No team members on file for this project yet.</p>`;
+      return;
+    }
+    el.innerHTML = team.map(m => {
+      const avatar = m.headshot
+        ? `<img class="team-headshot" src="../assets/img/team/${escapeHtml(m.headshot)}" alt="${escapeHtml(m.name)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'team-headshot team-headshot-fallback',textContent:'${escapeHtml(initialsOf(m.name))}'}))"/>`
+        : `<div class="team-headshot team-headshot-fallback">${escapeHtml(initialsOf(m.name))}</div>`;
+      return `
+        <div class="team-card">
+          ${avatar}
+          <div class="team-card-name">${escapeHtml(m.name)}</div>
+          <div class="team-card-bio">${m.bio ? escapeHtml(m.bio) : "<em>Bio coming soon.</em>"}</div>
+        </div>`;
+    }).join("");
+  }
+
+  wireTabs();
 
   if (!projectId) {
     document.getElementById("project-title").textContent = "No project specified";
@@ -399,6 +488,12 @@
       } else {
         presEl.innerHTML = `<p class="state-message-dark">No presentations scheduled yet.</p>`;
       }
+
+      // ── Meeting Notes & Milestones tab ──
+      renderMilestoneFeedTab(document.getElementById("milestone-feed-list"), buildMilestoneFeed(logs));
+
+      // ── Team tab ──
+      renderTeamTab(document.getElementById("team-grid"), buildTeamRoster(roster, projectId));
     }).catch(err => {
       console.error("Failed to load project tabs:", err);
       document.getElementById("project-title").textContent = "Couldn't load project data";
@@ -413,6 +508,10 @@
         `<p class="state-error-dark">Presentations unavailable — data did not load.</p>`;
       document.getElementById("deliverables-list").innerHTML =
         `<p class="state-error-dark">Deliverables unavailable — data did not load.</p>`;
+      document.getElementById("milestone-feed-list").innerHTML =
+        `<p class="state-error-dark">Meeting notes unavailable — data did not load.</p>`;
+      document.getElementById("team-grid").innerHTML =
+        `<p class="state-error-dark">Team info unavailable — data did not load.</p>`;
       ["stage-text","health-text","team-text","next-pres-text"]
         .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
     });
