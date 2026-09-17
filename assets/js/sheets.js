@@ -207,6 +207,59 @@ function buildDeliverableSummary(deliverableRows, projectName, today) {
 }
 
 /**
+ * Student Portal — Team tab.
+ *
+ * Every Roster row for a project, reshaped into a display-ready team
+ * member: name, bio, headshot filename. Bio/Headshot are populated
+ * manually in the Roster tab for now (no student-facing upload form yet),
+ * so both are optional — a member with no bio/headshot on file still
+ * renders, just without that content. Matching is case/whitespace-
+ * insensitive, consistent with every other cross-tab join on this site.
+ */
+function buildTeamRoster(rosterRows, projectName) {
+  const key = v => String(v || "").trim().toLowerCase();
+  const target = key(projectName);
+  return rosterRows
+    .filter(r => key(r["Project"]) === target)
+    .map(r => ({
+      name: (r["Student Name"] || "").trim(),
+      bio: (r["Bio"] || "").trim(),
+      headshot: (r["Headshot"] || "").trim(),
+    }))
+    .filter(m => !!m.name); // drop rows with no name (blank Roster rows)
+}
+
+/**
+ * Student Portal — Meeting Notes & Milestones tab.
+ *
+ * Every Update Log entry for one project, oldest first, in a display-ready
+ * shape. This is the same chronological feed the "Custom" tracking mode
+ * has shown since P2 — pulled out into its own function so the new
+ * Meeting Notes & Milestones tab can show it for Standard-track projects
+ * too (the roadmap there only shows checkpoint reach/not-reached, not the
+ * notes behind each entry). One canonical copy instead of two inline
+ * sorts that could drift.
+ */
+function buildMilestoneFeed(logRows) {
+  const tsOf = r => parseGvizDate(r["Timestamp"]);
+  return logRows
+    .slice()
+    .sort((a, b) => {
+      const da = tsOf(a), db = tsOf(b);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da - db;
+    })
+    .map(r => ({
+      date: formatGvizDate(r["Timestamp"]),
+      stage: (r["Biodesign Stage"] || "").trim(),
+      entryType: (r["Entry Type"] || "Update").trim(),
+      description: (r["Description"] || "").trim(),
+    }));
+}
+
+/**
  * Parse a gviz date cell value, which comes back as a literal string
  * like "Date(2026,8,14)" (month is 0-indexed), into a readable string
  * like "Sep 14, 2026". Returns "" if the value isn't a gviz date.
