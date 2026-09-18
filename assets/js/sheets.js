@@ -256,6 +256,42 @@ function buildMilestoneFeed(logRows) {
       stage: (r["Biodesign Stage"] || "").trim(),
       entryType: (r["Entry Type"] || "Update").trim(),
       description: (r["Description"] || "").trim(),
+      submittedBy: (r["Student Name"] || "").trim(),
+    }));
+}
+
+/**
+ * Student Portal — Team Needs tab.
+ *
+ * Every "Needs Admin Support" entry for one project, newest first, plus
+ * the two independent confirmation flags a request can carry (Admin
+ * side / Team side — set as two new optional Update Log columns,
+ * "Admin Confirmed" / "Team Confirmed", filled in manually the same way
+ * Status already is). Uses the same `type.includes("admin")` test
+ * index.html's selectAlerts() already uses, so a request that shows here
+ * is exactly one that would appear on the admin dashboard's open-alerts
+ * queue too — one shared definition of "this is an admin-support ask,"
+ * not two that could quietly drift apart.
+ */
+function buildTeamNeeds(logRows) {
+  const tsOf = r => parseGvizDate(r["Timestamp"]);
+  const isChecked = v => ["yes", "true", "x", "checked"].includes(String(v || "").trim().toLowerCase());
+  return logRows
+    .filter(r => (r["Entry Type"] || "").toLowerCase().includes("admin"))
+    .slice()
+    .sort((a, b) => {
+      const da = tsOf(a), db = tsOf(b);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return db - da; // newest first — most actionable at the top
+    })
+    .map(r => ({
+      date: formatGvizDate(r["Timestamp"]),
+      submittedBy: (r["Student Name"] || "").trim(),
+      description: (r["Description"] || "").trim(),
+      adminConfirmed: isChecked(r["Admin Confirmed"]),
+      teamConfirmed: isChecked(r["Team Confirmed"]),
     }));
 }
 
