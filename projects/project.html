@@ -285,6 +285,9 @@
   })();
 
   async function fetchGatedProjectData(project, token) {
+    if (GATED_API_URL.includes("PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE")) {
+      throw new Error("NOT_CONFIGURED");
+    }
     const url = buildGatedApiUrl(GATED_API_URL, project, token);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Gated endpoint returned HTTP ${res.status}`);
@@ -632,9 +635,13 @@
   function showLoadError(err) {
     console.error("Failed to load project tabs:", err);
     document.getElementById("project-title").textContent = "Couldn't load project data";
-    document.getElementById("project-subtitle").innerHTML =
-      `<span class="state-error-dark"><strong>The tracker didn't load.</strong> ` +
-      `Nothing below is current. Try refreshing; if it persists, check that the gated endpoint is deployed and reachable.</span>`;
+    const notConfigured = err && err.message === "NOT_CONFIGURED";
+    document.getElementById("project-subtitle").innerHTML = notConfigured
+      ? `<span class="state-error-dark"><strong>This page isn't wired up yet.</strong> ` +
+        `GATED_API_URL in project.html is still the placeholder text — replace it with your deployed Apps Script /exec URL, then reload. ` +
+        `The token in your link is fine; nothing will load until this URL is set regardless of the token.</span>`
+      : `<span class="state-error-dark"><strong>The tracker didn't load.</strong> ` +
+        `Nothing below is current. Try refreshing; if it persists, check that the gated endpoint is deployed and reachable.</span>`;
     // Replace every "Loading…" region so none of them sit there forever
     // implying data is still on its way.
     document.getElementById("roadmap-nodes").innerHTML =
