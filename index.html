@@ -29,8 +29,7 @@
 
   .dash-wrap { max-width: 1080px; margin: 0 auto; padding: 40px 32px 80px; }
 
-  .dash-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; margin-bottom: 24px; }
-  @media (max-width: 860px) { .dash-grid { grid-template-columns: 1fr; } }
+  .dash-grid { display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 24px; }
 
   .card { background: var(--white); border-radius: var(--r); border: 1px solid #E4E9F0; padding: 24px 26px; }
   .card-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--teal); margin: 0 0 10px; }
@@ -46,21 +45,6 @@
   .week-progress-fill { background: var(--gold); height: 100%; border-radius: 100px; transition: width 0.4s ease; }
   .week-progress-label { font-size: 12px; color: rgba(255,255,255,0.62); display: flex; justify-content: space-between; }
   .week-stage-pill { display: inline-block; margin-top: 16px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.24); border-radius: 100px; padding: 5px 14px; font-size: 12px; font-weight: 600; }
-
-  /* Stat chips */
-  .stats-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
-  .stat-chip { background: var(--white); border-radius: var(--r); border: 1px solid #E4E9F0; padding: 18px 20px; }
-  .stat-chip .num { font-family: 'DM Serif Display', serif; font-size: 30px; line-height: 1; margin-bottom: 4px; }
-  .stat-chip .label { font-size: 12px; color: var(--slate); }
-  .stat-chip.health-green .num { color: var(--green); }
-  .stat-chip.health-yellow .num { color: var(--amber); }
-  .stat-chip.health-red .num { color: var(--red); }
-
-  /* Activity feed */
-  .activity-item { padding: 12px 0; border-bottom: 1px solid #EEF1F5; }
-  .activity-item:last-child { border-bottom: none; }
-  .activity-meta { font-size: 11px; color: var(--ghost); margin-bottom: 3px; }
-  .activity-desc { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
 
   .presentation-item { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #EEF1F5; }
   .presentation-item:last-child { border-bottom: none; }
@@ -96,18 +80,7 @@
     <span class="week-stage-pill" id="week-stage-pill">Expected Stage: —</span>
   </div>
 
-  <div class="stats-row" id="stats-row">
-    <div class="stat-chip"><div class="num">—</div><div class="label">Active projects</div></div>
-    <div class="stat-chip health-red"><div class="num">—</div><div class="label">Needs attention</div></div>
-  </div>
-
   <div class="dash-grid">
-    <div class="card">
-      <p class="card-eyebrow">Immediate alerts</p>
-      <h3>Teams needing admin support</h3>
-      <div id="activity-list" aria-live="polite"><p class="state-message">Loading…</p></div>
-    </div>
-
     <div class="card">
       <p class="card-eyebrow">Upcoming</p>
       <h3>Guest speakers, check ins, symposium</h3>
@@ -289,13 +262,21 @@
     markSyncFailed();
   });
 
-  // ── Stats row ──────────────────────────────────────────────────
-  // Pure: given Dashboard + Update Log rows, returns the two reconciling
-  // numbers. "Active" excludes Complete projects — a completed project's
-  // stale log is a false alarm, not a real issue. "Needs attention" is
-  // driven by M-1 (days since last update: red or never-logged), not by
-  // self-reported Overall Health — a team can report Green right up until
-  // the week they report Red, but silence shows up immediately.
+  // ── Dashboard stats (Active projects / Needs attention) and the
+  //    "Immediate Alerts" cross-team panel were removed from this page
+  //    (2026-09-18) now that teams can navigate here directly via their
+  //    own project link — showing every team's health and open support
+  //    requests in one place was no longer appropriate for a page
+  //    reachable by students, not just admins. The equivalent info now
+  //    lives per-project on each team's own Team Needs tab.
+  //
+  //    computeDashboardStats() / isResolved() / selectAlerts() /
+  //    sheetRowLink() below are the pure functions that used to drive
+  //    those panels. They're kept, untouched and still tested (P1-7,
+  //    p0-3, p0-4-mitigation, resolve-queue-link), in case this or a
+  //    similar admin-only view gets rebuilt later — removing them now
+  //    would mean rewriting the same logic from scratch rather than
+  //    just calling it again.
   function computeDashboardStats(dashboardRows, updateLogRows, today) {
     const active = dashboardRows.filter(r => {
       const name = (r["Project"] || "").trim();
@@ -310,38 +291,6 @@
     return { activeCount: active.length, needsAttentionCount: needsAttention.length };
   }
 
-  Promise.all([
-    withTimeout(fetchTab(GIDS.dashboard), 15000, "dashboard"),
-    withTimeout(fetchTab(GIDS.updateLog), 15000, "update log"),
-  ]).then(([dashboardRows, updateLogRows]) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const { activeCount, needsAttentionCount } = computeDashboardStats(dashboardRows, updateLogRows, today);
-    const chips = document.querySelectorAll("#stats-row .num");
-    chips[0].textContent = activeCount;
-    chips[1].textContent = needsAttentionCount;
-    markSynced();
-  }).catch(err => {
-    console.error(err);
-    // Blank the chips rather than leaving zeros: 0/0 reads as a real
-    // (if grim) state, which is exactly the confusion P1-5 is about.
-    document.querySelectorAll("#stats-row .num").forEach(n => { n.textContent = "—"; });
-    document.getElementById("stats-row").insertAdjacentHTML("afterend",
-      `<div class="state-error">Couldn't load project stats. These are not real zeros — the data did not load.</div>`);
-    markSyncFailed();
-  });
-
-  // ── Immediate alerts ────────────────────────────────────────────
-  // Shows only entries flagged as needing admin support. Matches both
-  // "Needs Admin Support" (new form label) and "Blocker" (old label,
-  // in case earlier log rows still use it) so nothing gets missed.
-  //
-  // Resolution state: the Update Log has no Status column yet (that's a
-  // schema addition — see the remediation brief §5, Durga's action). This
-  // reads a Status cell defensively: until that column exists, every row
-  // has Status === undefined and is treated as open, so behaviour is
-  // unchanged today and starts working the moment the column is added —
-  // no second code change required.
   function isResolved(r) {
     return (r["Status"] || "").trim().toLowerCase() === "resolved";
   }
@@ -373,28 +322,14 @@
     };
   }
 
-  withTimeout(fetchTab(GIDS.updateLog), 15000, "alerts").then(rows => {
-    const container = document.getElementById("activity-list");
-    const { alerts, resolvedCount } = selectAlerts(rows, 6);
-    const resolvedNote = resolvedCount
-      ? `<p class="state-message" style="padding-top:2px;">${resolvedCount} resolved this semester</p>`
-      : "";
-
-    if (!alerts.length) {
-      container.innerHTML = `<p class="state-message">No open requests right now.</p>${resolvedNote}`;
-      return;
-    }
-
-    container.innerHTML = alerts.map(r => `
-      <div class="activity-item">
-        <div class="activity-meta">${escapeHtml(r["Project"])} · ${fmtDate(r._ts)}</div>
-        <div class="activity-desc">${escapeHtml(r["Description"] || "")}</div>
-      </div>`).join("") + resolvedNote;
-    markSynced();
-  }).catch(err => {
-    renderError(document.getElementById("activity-list"), "alerts", err);
-    markSyncFailed();
-  });
+  // Deep-link straight to a row's Status cell in the actual sheet, so
+  // clearing the queue doesn't mean hunting for the right row by hand.
+  // gviz is called with headers=1 (see fetchTab), so row 1 is always the
+  // header and data row i (0-indexed) is always sheet row i+2 — no
+  // reordering happens before this point, so the index is reliable.
+  function sheetRowLink(gid, rowNum) {
+    return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=${gid}&range=A${rowNum}`;
+  }
 
   // ── Upcoming: guest speakers, workshops, symposium ──────────────
   // Previously a hardcoded array duplicating the Syllabus Map tab — a
