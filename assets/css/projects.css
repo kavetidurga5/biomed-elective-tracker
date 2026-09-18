@@ -175,7 +175,9 @@ body {
 .state-message-dark { font-size: 14.5px; color: rgba(255,255,255,0.36); }
 
 /* ── Roadmap timeline ── */
-.roadmap-wrap { margin-bottom: 38px; }
+.roadmap-wrap { margin-bottom: 38px; overflow-x: auto; }
+/* Standard-track timeline: keep line + 12 nodes as one scrolling unit on phones */
+.roadmap-track.timeline-scroll { min-width: 800px; }
 .roadmap-track { position: relative; padding-top: 6px; }
 .roadmap-line-bg {
   position: absolute; top: 15px; left: 0; right: 0; height: 2px;
@@ -361,3 +363,18 @@ body {
 .team-card-name { font-size: 16px; font-weight: 600; color: var(--white); margin-bottom: 8px; }
 .team-card-bio { font-size: 14px; line-height: 1.65; color: rgba(255,255,255,0.62); }
 .team-card-bio em { color: rgba(255,255,255,0.36); font-style: italic; }
+
+/* Phones: fade the right edge of the tab bar so it's obvious it scrolls */
+@media (max-width: 700px) {
+  .portal-tabs {
+    -webkit-mask-image: linear-gradient(to right, #000 88%, transparent);
+            mask-image: linear-gradient(to right, #000 88%, transparent);
+  }
+}
+
+/* Admin unlock box on the Projects grid */
+.admin-gate { max-width: 460px; margin: 24px 0; }
+.admin-gate label { display: block; font-size: 13px; color: var(--slate); margin-bottom: 8px; }
+.admin-gate input { padding: 9px 12px; border-radius: 6px; border: 1px solid #C9D2DE; font-size: 14px; width: 250px; margin-right: 8px; }
+.admin-gate button { padding: 9px 16px; border-radius: 6px; border: none; background: var(--teal); color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; }
+.admin-gate button:disabled { opacity: 0.6; cursor: default; }

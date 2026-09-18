@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
 <title>Projects — Biomedical Innovations, UTSW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -21,14 +22,14 @@
   </a>
   <nav class="site-topbar-nav">
     <a href="../index.html">Dashboard</a>
-    <a href="index.html" class="active">Projects</a>
+    <a href="index.html" class="active" data-admin-only>Projects</a>
   </nav>
 </header>
 
 <main class="projects-wrap">
   <p class="projects-eyebrow">Active Track Projects</p>
   <h1 class="projects-heading">Projects</h1>
-  <p class="projects-sub">Live status across every Biomedical Innovations project — stage, health, and upcoming presentations, pulled directly from the team's tracker.</p>
+  <p class="projects-sub">Admin view: live status across every Biomedical Innovations project — stage, health, update recency, and deliverables.</p>
 
   <div id="project-cards" aria-live="polite">
     <p class="state-message">Loading projects…</p>
@@ -79,51 +80,47 @@
     return `<span class="deliv-badge ${cls}">${escapeHtml(text)}</span>`;
   }
 
-  withTimeout(fetchTab(GIDS.dashboard), 15000, "dashboard").then(dashboardRows => {
-    return Promise.all([
-      withTimeout(fetchTab(GIDS.updateLog), 15000, "update log"),
-      withTimeout(fetchTab(GIDS.deliverables), 15000, "deliverables"),
-    ]).then(([updateLogRows, deliverableRows]) => ({ dashboardRows, updateLogRows, deliverableRows }));
-  }).then(({ dashboardRows, updateLogRows, deliverableRows }) => {
-    const container = document.getElementById("project-cards");
+  const container = document.getElementById("project-cards");
 
-    // A blank Project cell previously became an empty ghost card linking
-    // to project.html?id= (no project). Filter before checking emptiness
-    // so "5 rows, all blank" reports as no projects, not 5 broken cards.
+  // Admin gate. This page shows every team's health and lateness, so it is
+  // admin-only: the data itself is served by the Apps Script endpoint only
+  // when the admin key is supplied (hiding the page alone would not protect it).
+  function renderGate(message) {
+    container.innerHTML = `
+      <div class="admin-gate">
+        ${message ? `<div class="state-error"><strong>${escapeHtml(message)}</strong></div>` : ""}
+        <p class="state-message">This page is for course administrators. Students: please use the personal project link you were emailed.</p>
+        <label for="admin-key-input">Admin access key</label>
+        <input type="password" id="admin-key-input" placeholder="Paste the admin key" autocomplete="off"/>
+        <button id="admin-key-submit">Unlock</button>
+      </div>`;
+    document.getElementById("admin-key-submit").addEventListener("click", () => {
+      const key = document.getElementById("admin-key-input").value.trim();
+      if (key) loadGrid(key, true);
+    });
+  }
+
+  // Pure: builds the grid markup from admin-overview data.
+  function renderProjectCards(dashboardRows, updateLogRows, deliverableRows, today) {
     const projects = selectProjectRows(dashboardRows);
-
     if (!projects.length) {
-      container.innerHTML = `<p class="state-message">No projects listed yet — check back once teams are assigned.</p>`;
-      return;
+      return `<p class="state-message">No projects listed yet — check back once teams are assigned.</p>`;
     }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    container.innerHTML = `<div class="project-grid">` + projects.map(r => {
+    return `<div class="project-grid">` + projects.map(r => {
       const name = escapeHtml(r["Project"]);
       const stage = escapeHtml(r["Current Stage"]);
-      const nextPres = formatGvizDate(r["Next Presentation"]);
-
-      // A completed project's stale-log "Red" is a false alarm, not a
-      // real issue, so show a neutral "Pending" badge instead of the
-      // health color for anything marked Complete in Project Status.
+      // A completed project's stale-log "Red" is a false alarm, so show a
+      // neutral "Pending" badge for anything marked Complete.
       const isComplete = (r["Project Status"] || "").trim().toLowerCase() === "complete";
       const healthLabel = isComplete ? "Pending" : (escapeHtml(r["Overall Health"]) || "Unknown");
       const healthCls = isComplete ? "health-unknown" : healthClass(r["Overall Health"]);
-
-      // M-1: silence is the leading indicator self-reported health can't
-      // show. Skip the badge on Complete projects — they aren't expected
-      // to keep logging.
       const staleBadge = isComplete ? "" : renderStalenessBadge(
         daysSinceLastUpdate(updateLogRows, r["Project"], today)
       );
-
-      // M-3: compact deliverable rollup, e.g. "3/5 deliverables · 1 late".
       const delivBadge = renderDeliverableSummaryBadge(
         buildDeliverableSummary(deliverableRows, r["Project"], today)
       );
-
+      // Links carry no token: project.html reuses the admin key saved on this device.
       return `
         <a class="project-card" href="project.html?id=${encodeURIComponent((r["Project"] || "").trim())}">
           <h3>${name}</h3>
@@ -131,16 +128,35 @@
           <span class="health ${healthCls}">${healthLabel}</span>
           ${staleBadge}
           ${delivBadge}
-          <p class="next-pres">Next: ${nextPres || "TBD"}</p>
         </a>`;
     }).join("") + `</div>`;
-  }).catch(err => {
-    console.error("Failed to load dashboard tab:", err);
-    document.getElementById("project-cards").innerHTML =
-      `<div class="state-error"><strong>Couldn't load the project list.</strong>` +
-      `The tracker sheet didn't respond. This is a loading failure, not an empty roster — ` +
-      `check your connection, or whether the sheet is still shared.</div>`;
-  });
+  }
+
+  function loadGrid(token, fromForm) {
+    container.innerHTML = `<p class="state-message">Loading projects…</p>`;
+    withTimeout(fetchAdminOverview(token), 15000, "project overview").then(result => {
+      if (!result.ok) {
+        // Forget a saved key that no longer works so it doesn't fail silently forever.
+        try { if (getSavedAdminKey() === token) localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY); } catch (e) {}
+        renderGate(fromForm ? "That key didn't work." : "");
+        return;
+      }
+      if (fromForm) { try { localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token); } catch (e) {} }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const d = result.data;
+      container.innerHTML = renderProjectCards(d.dashboard || [], d.updateLog || [], d.deliverables || [], today);
+    }).catch(err => {
+      console.error("Failed to load project overview:", err);
+      container.innerHTML =
+        `<div class="state-error"><strong>Couldn't load the project list.</strong>` +
+        `The tracker service didn't respond. This is a loading failure, not an empty roster — try refreshing.</div>`;
+    });
+  }
+
+  const savedKey = getSavedAdminKey();
+  if (savedKey) loadGrid(savedKey, false); else renderGate("");
+  applyAdminOnlyNav();
 </script>
 
 </body>

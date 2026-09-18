@@ -1,160 +1,91 @@
 # Biomedical Innovations Tracker
 
-Live status dashboard for the ENRH 116 Biomedical Innovations elective at
-UT Southwestern. A static site (no build step, no framework) reads
-directly from a Google Sheet and renders a course-wide dashboard plus a
-detail page per project.
+Status site for the ENRH 116 Biomedical Innovations elective at UT Southwestern.
+A static site (no build step, no framework) hosted on GitHub Pages. All data
+comes from a **private** Google Sheet through an **Apps Script Web App**.
 
 **Live site:** https://kavetidurga5.github.io/biomed-elective-tracker/index.html
-**Sheet:** the workbook at `SHEET_ID` in `assets/js/sheets.js`
 
-There is intentionally no build step, no package.json, and no framework.
-The maintainers are four medical students — a toolchain is a bus-factor
-risk. Everything is hand-written vanilla JS loaded via `<script src>`.
+There is intentionally no build step, no package.json, and no framework: the
+maintainers are four medical students, and a toolchain is a bus-factor risk.
 
 ---
 
-## How the Sheet maps to the site
+## How it works
 
-The site reads five tabs from one Google Sheet via the `gviz` JSON
-endpoint (no API key, no server — this only works because the sheet is
-shared as "Anyone with the link: Viewer"):
+```
+Browser (GitHub Pages)  ──GET──▶  Apps Script Web App (apps-script/Code.gs)  ──reads──▶  PRIVATE Google Sheet
+                                        │
+                                        └── reads tokens from a SECOND private spreadsheet
+```
 
-| Tab (in `GIDS`) | Read by | Key columns |
+| Page | Who | Data it asks the Web App for |
 |---|---|---|
-| `dashboard` | all three pages | `Project`, `Current Stage`, `Overall Health`, `Next Presentation`, `Project Status`, `Tracking Mode`, `Poster PDF`, `Poster Image` |
-| `roster` | project detail page | `Project`, `Student Name` |
-| `presentations` | project detail page | `Project`, `Presentation Type`, `Date`, `Prep Status`, `Owner`, `Event Name`, `Link` |
-| `syllabus` | dashboard, project detail page | `Week`, `Date`, `Topic`, `Expected Stage`, `Agenda Note` |
-| `updateLog` | dashboard, project detail page | `Timestamp`, `Project`, `Student Name`, `Entry Type`, `Biodesign Stage`, `Description`, `Status`\* |
+| `index.html` (Dashboard) | Everyone | `?action=course` — syllabus + course deliverable dates (non-sensitive) |
+| `projects/project.html?id=<name>&token=<token>` | One team (or admin) | `?project=&token=` — that team's rows only, whitelisted columns only |
+| `projects/index.html` (Projects grid) | **Admin only** | `?action=projects&token=<ADMIN>` |
 
-\* `Status` (Open/Resolved) doesn't exist in the sheet yet — see
-[Known gaps](#known-gaps-that-need-a-sheet-change) below.
+- Each team gets its own link containing its own token. A team's token cannot read another team.
+- The **admin key** is typed once per device and saved in that browser's localStorage. It is never in any page, link, or this repo.
+- The Sheet must be **Restricted**. Do not set it to "Anyone with the link".
+- `assets/js/sheets.js` holds shared helpers and `GATED_API_URL`. Its `fetchTab`/`SHEET_ID`/`GIDS`
+  are LEGACY (direct public-Sheet reads) and are not called by any page.
 
-Each row's **first column must be non-empty** to be read at all — a
-blank column A (or one starting with `^`) is treated as a spacer/example
-row and dropped. Every other column can be blank; a project with just a
-name and nothing else set is still shown.
+## Sheet tabs (main spreadsheet)
 
-**Three pages, one data layer:**
+| Tab | Key columns |
+|---|---|
+| `dashboard` | `Project`, `Current Stage`, `Overall Health`, `Project Status`, `Tracking Mode`, `Poster PDF`, `Poster Image`, `Elevator Pitch`, `Key Stat Number/Text`, `Disease State`, `Affected Demographic`, `Problem Statement`, `Gap` |
+| `roster` | `Student Name`, `Project`, `Bio`, `Headshot` |
+| `presentations` | `Project`, `Presentation Type`, `Date`, `Prep Status`, `Owner`, `Event Name`, `Link` |
+| `syllabus` | `Week`, `Date`, `Topic`, `Expected Stage`, `Agenda Note` |
+| `updateLog` | `Timestamp`, `Student Name`, `Project`, `Biodesign Stage`, `Entry Type`, `Description`, `Admin Confirmed`, `Team Confirmed` |
+| `deliverables` | `Project`, `Deliverable`, `Due Date`, `Submitted` (Yes), `Submitted Date` |
 
-```
-index.html              → Dashboard (week card, stat chips, alerts, upcoming events)
-projects/index.html     → Project grid (one card per project)
-projects/project.html   → Project detail (?id=<project name>)
-assets/js/sheets.js     → Shared: fetchTab(), fetchAllTabs(), date parsing,
-                           HTML escaping, and the M-1 staleness helpers.
-                           Loaded by all three pages before their own
-                           inline <script>.
-assets/css/projects.css → Shared styles for all three pages.
-```
+Only the columns listed in `COLUMNS` in `apps-script/Code.gs` are ever sent to a browser. To show a new
+column on the site, add its name there **and** redeploy the script.
 
-There's no bundler, so `sheets.js` is loaded via a plain `<script src>`
-tag in each page's `<head>`/before its own script block. Functions
-defined there (`escapeHtml`, `parseGvizDate`, `daysSinceLastUpdate`,
-etc.) are just available as globals in each page's inline script.
-
----
+Row rules: a row whose first column is blank or starts with `^` is ignored. Project matching is
+trim + case-insensitive.
 
 ## Common changes
 
-### Add a new project
-Add a row to the `dashboard` tab with a `Project` name. It appears on
-the grid and gets a detail page at
-`project.html?id=<url-encoded project name>` automatically — nothing to
-deploy. If you also want it on a team's roster, or want presentations
-tracked, add matching rows to `roster` / `presentations` keyed by the
-same `Project` name (matching is trim + case-insensitive, so exact
-casing doesn't matter, but use the *same* name consistently).
+- **Reschedule a class / guest speaker:** edit the `syllabus` tab. Dashboard, timelines, and "Upcoming" update automatically.
+- **Change a deliverable date:** edit that deliverable's `Due Date` in the `deliverables` tab (all teams' rows).
+  The dashboard reads it from there — nothing is hardcoded in the site.
+- **Add a project:** add a row to `dashboard`, matching rows in `roster` / `deliverables`, and a row in the
+  private token spreadsheet (`Access Tokens`: Project + a new random Token). Send that team its link.
+- **Rotate a token:** change it in the private token spreadsheet, then re-send that team's link.
+- **Mark a project complete:** set `Project Status` = `Complete` on the `dashboard` tab.
 
-### Change the syllabus (reschedule a guest speaker, add a week, etc.)
-Edit the `syllabus` tab directly. The "Where we are now" week card,
-the roadmap checkpoints on every project page, and the "Upcoming"
-events list on the dashboard are all derived live from this tab — no
-code change, no redeploy, just edit the Sheet.
+## Deploying the Apps Script
 
-Dates can be either a real Date-typed cell or plain ISO text
-(`2026-09-03`) — both are parsed. `Expected Stage` values are matched
-case-insensitively against the Update Log's `Biodesign Stage` column to
-build each project's roadmap.
+1. Open the Sheet → Extensions → Apps Script. Paste `apps-script/Code.gs`; set `TOKEN_SPREADSHEET_ID`.
+2. Project Settings → Time zone = the Sheet's time zone (America/Chicago).
+3. Deploy → Manage deployments → edit the existing deployment → **New version** (keeps the same `/exec` URL).
+   Execute as **Me**; Who has access **Anyone**.
 
-### Log progress for a project (Update Log tab)
-Add a row with `Project`, `Timestamp`, `Biodesign Stage` (should match
-an `Expected Stage` value from the syllabus tab if you want it to light
-up a roadmap checkpoint), `Entry Type`, and `Description`.
+## Deploy the site
 
-- `Entry Type` containing "admin" or "blocker" (case-insensitive) shows
-  up in the dashboard's "Immediate alerts" card.
-- The most recent `Timestamp` per project drives the "Days since last
-  update" badge (🟢/🟡/🔴/⚫) on the grid page and the dashboard's
-  "Needs attention" count.
-
-### Mark a project complete
-Set `Project Status` to `Complete` in the `dashboard` tab. This excludes
-it from the "Active projects" count and from "Needs attention" (a
-completed project's stale log isn't a real problem), and shows a
-"Pending" badge instead of a health color.
-
----
-
-## Deploy
-
-Every push to `main` is a live production deploy via GitHub Pages —
-there is no staging environment. **Work on a branch, open a PR, review
-the diff, then merge.**
-
-```bash
-git checkout -b my-change
-# ...edit...
-git push origin my-change
-# open a PR into main, review, merge
-```
-
-Before merging anything that touches `assets/js/sheets.js` or the data
-layer, run the test suite (`node`, no install needed beyond what's
-already on your machine):
+Every push to `main` is a live production deploy via GitHub Pages — there is no staging.
+Work on a branch, review the diff, then merge. Before merging anything that touches `assets/js/sheets.js`:
 
 ```bash
 for f in test/*.test.js; do node "$f"; done
 ```
 
-These tests extract the real functions out of the shipped HTML/JS files
-(there's no separate source-of-truth module to import), so a passing
-suite means the actual site logic was exercised, not a reimplementation
-of it.
+Tests extract the real functions out of the shipped HTML/JS (see `test/harness.js`), so a pass means the
+actual site logic ran.
 
----
+## Security notes
 
-## Known gaps that need a Sheet change
+- Anything in this repo is public. Never commit tokens, the admin key, or real personal data.
+- Tokens live only in the private token spreadsheet. Rotate them if a link is forwarded outside its team.
+- Dead-but-tested admin helpers (`computeDashboardStats`, `selectAlerts`, `isResolved`, `sheetRowLink`) remain in
+  `index.html` for a possible future admin view; they are not called.
 
-These came out of a September 2026 remediation pass — ask Durga for the
-full write-up if you want the reasoning behind each. Summary:
+## Known gaps
 
-- [ ] **Update Log needs a `Status` column** (`Open` / `Resolved`). The
-      code already reads it defensively — until the column exists,
-      every alert is treated as open (today's behavior, unchanged). Add
-      the column and alert resolution starts working immediately.
-- [ ] **Dashboard needs a stable `Project ID` slug column.** Right now
-      every cross-tab join and every shared URL is keyed on the
-      `Project` display name. Renaming a project breaks old links. A
-      slug column (e.g. `ddh-task-trainer`) would survive renames.
-- [ ] **No Deliverables tab.** The five course deliverables (Preference
-      Ranking, Team Formation, Proposal, Mid-Semester Check-In, Pitch)
-      are still hardcoded in `index.html` (`DELIVERABLES` array) because
-      there's no per-project submission tracking in the Sheet. A new
-      tab (`Project | Deliverable | Due Date | Submitted | Submitted Date`)
-      would let this go live and add a compliance grid.
-- [ ] **No Attendance tab.** Pass/Fail hinges on attending 10 of 12
-      sessions and all guest lectures — currently untracked anywhere in
-      the site.
-
-## ⚠️ Public data note
-
-`SHEET_ID` in `assets/js/sheets.js` is public (it's in this repo), and
-the Sheet must be link-viewable for the site to work at all. That means
-**anyone with the link can query any tab in the workbook**, not just the
-five the site reads. The public "Immediate alerts" card shows
-`Project · Date · Description` (student names were removed — see git
-history for `P0-4-mitigation`). If you add new tabs or columns to this
-workbook, assume they're publicly queryable and don't put anything in
-this Sheet you wouldn't post on an open bulletin board.
+- [ ] No Attendance tab (Pass/Fail needs 10 of 12 sessions + all guest lectures).
+- [ ] Site still joins on the `Project` display name; the `Project ID` column exists but is not used yet.
+- [ ] M-2 (stage vs. expected-stage delta) not started.
