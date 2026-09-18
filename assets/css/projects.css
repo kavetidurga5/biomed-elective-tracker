@@ -139,9 +139,10 @@ body {
   font-size: 16.5px; line-height: 1.8; color: rgba(255,255,255,0.56); max-width: 600px; margin-bottom: 34px;
 }
 
-/* Two-column context grid — identical structure to the DDH section's
-   Clinical Problem / The Gap / Our Approach / Status quad */
-.context-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; margin-bottom: 38px; }
+/* Status quad — now 3 items (Stage/Health/Next Deadline); Team moved to
+   its own tab, since a comma-list of names was redundant with a full
+   roster page. */
+.context-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 30px; margin-bottom: 38px; }
 .context-block {
   border-left: 2px solid rgba(2,128,144,0.38);
   padding: 13px 0 13px 17px;
@@ -272,13 +273,15 @@ body {
 .deliv-badge-ok   { color: var(--slate); }
 .deliv-badge-late { color: #b02020; font-weight: 600; }
 
-/* ── Student Portal: tabs (Overview / Meeting Notes / Team) ────────── */
+/* ── Student Portal: tabs (Overview / Team / Team Needs / Meeting
+   Notes / Publications) ─────────────────────────────────────────────
+   Sticky so the tab bar stays reachable on a long Overview scroll. */
 .portal-tabs {
   display: flex; gap: 6px; margin: 30px 0 30px; border-bottom: 1px solid rgba(255,255,255,0.12);
-  overflow-x: auto;
+  overflow-x: auto; position: sticky; top: 0; background: var(--navy); z-index: 5;
 }
 .portal-tab {
-  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+  font-family: 'Inter', sans-serif; font-size: 16.5px; font-weight: 600;
   color: rgba(255,255,255,0.5); background: none; border: none;
   padding: 12px 6px; margin-right: 22px; cursor: pointer;
   border-bottom: 2px solid transparent; white-space: nowrap;
@@ -290,7 +293,65 @@ body {
   font-size: 14.5px; line-height: 1.7; color: rgba(255,255,255,0.55); margin-bottom: 22px; max-width: 62ch;
 }
 
-/* ── Student Portal: Team tab ───────────────────────────────────────── */
+/* ── Overview: optional elevator-pitch / key-stat block ─────────────
+   Hidden entirely when the Dashboard row has no "Elevator Pitch" set —
+   most projects won't fill this in right away, and an empty banner
+   reads worse than no banner. */
+.overview-pitch { margin-bottom: 34px; }
+.overview-pitch-text { font-size: 19.5px; line-height: 1.68; color: rgba(255,255,255,0.68); max-width: 52ch; margin: 0 0 22px; }
+.overview-stat { display: flex; gap: 18px; align-items: baseline; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.14); max-width: 460px; }
+.overview-stat-num { font-family: 'DM Serif Display', serif; font-size: 44px; color: var(--teal); line-height: 1; }
+.overview-stat-text { font-size: 15px; color: rgba(255,255,255,0.55); line-height: 1.6; }
+
+/* ── Overview: Disease State / Demographic + Problem / Gap ─────────── */
+.fact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin-bottom: 38px; }
+.prose-block { border-left: 2px solid var(--teal); padding-left: 18px; }
+.prose-block + .prose-block { margin-top: 26px; }
+.prose-label {
+  font-size: 13.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgba(255,255,255,0.4); margin: 0 0 8px;
+}
+.prose-body { font-size: 17px; line-height: 1.72; color: rgba(255,255,255,0.68); margin: 0; max-width: 62ch; }
+
+/* ── Meeting Notes & Milestones: submission log table ────────────── */
+.log-table-wrap { overflow-x: auto; margin-bottom: 20px; }
+.log-table { width: 100%; border-collapse: collapse; }
+.log-table th {
+  text-align: left; font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(255,255,255,0.4); padding: 0 14px 12px 0; border-bottom: 1px solid rgba(255,255,255,0.14); white-space: nowrap;
+}
+.log-table td {
+  padding: 14px 14px 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07); vertical-align: top; font-size: 16px;
+}
+.log-date { color: rgba(255,255,255,0.5); white-space: nowrap; font-size: 14.5px; }
+.log-type {
+  display: inline-block; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
+  background: rgba(2,128,144,0.18); color: var(--teal); white-space: nowrap;
+}
+.log-type.needs-help { background: rgba(232,160,32,0.18); color: var(--gold); }
+.log-desc { color: rgba(255,255,255,0.75); line-height: 1.55; }
+.log-who { color: rgba(255,255,255,0.45); font-size: 14.5px; white-space: nowrap; }
+
+/* ── Team Needs ──────────────────────────────────────────────────── */
+.need-card {
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 10px; padding: 20px 22px; margin-bottom: 14px;
+}
+.need-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+.need-date { font-size: 13.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--gold); }
+.need-who { font-size: 14px; color: rgba(255,255,255,0.45); }
+.need-desc { font-size: 16.5px; line-height: 1.65; color: rgba(255,255,255,0.75); margin-bottom: 16px; }
+.need-checks { display: flex; gap: 26px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; }
+.need-check { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
+.need-check input { width: 16px; height: 16px; accent-color: var(--teal); }
+.need-check span { color: rgba(255,255,255,0.6); }
+.need-check.confirmed span { color: var(--white); }
+.need-card.fully-confirmed { opacity: 0.6; }
+
+/* ── Publications (empty state — no live data source yet) ──────────── */
+.pubs-empty { font-size: 16px; color: rgba(255,255,255,0.4); line-height: 1.65; }
+
+/* ── Team tab (buildTeamRoster / student portal) ─────────────────── */
 .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; margin-bottom: 20px; }
 .team-card {
   background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
