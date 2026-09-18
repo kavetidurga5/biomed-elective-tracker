@@ -14,7 +14,7 @@
 //   (default)          ?project=&token=   -> one team's data
 //   ?action=course                        -> syllabus + course deliverable dates (public)
 //   ?action=projects&token=<ADMIN>        -> admin-only grid data
-const GATED_API_URL = "https://script.google.com/macros/s/AKfycbx8qvKXjQE12HP3bZVySp7zH401oJhBU7vSRDNXrP3P2awzeKCNPJ4ApEBy85x1fddR/exec";
+const GATED_API_URL = "https://script.google.com/macros/s/AKfycbzejLKWnmkJixGIAxTkz1OO_d4bpWXDuGi3IhcmpZLNEzOUt8PW2QlCx3V2Euxl-lY/exec";
 const ADMIN_TOKEN_STORAGE_KEY = "bi_admin_token";
 
 // ── TODO: fill these in from Step 2 ──────────────────────────────
