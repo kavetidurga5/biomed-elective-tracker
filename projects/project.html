@@ -285,7 +285,7 @@
   })();
 
   async function fetchGatedProjectData(project, token) {
-    if (GATED_API_URL.includes("https://script.google.com/macros/s/AKfycbxBLritp6Cirfp76UjZvVs_dI1wjbIZCu6gsV_weDPHAD_er0r1FaVuD4BkFJ-JKA/exec")) {
+    if (GATED_API_URL.includes("PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE")) {
       throw new Error("NOT_CONFIGURED");
     }
     const url = buildGatedApiUrl(GATED_API_URL, project, token);
