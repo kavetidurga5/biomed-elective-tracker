@@ -68,7 +68,6 @@
             <p class="state-message-dark">Loading roadmap…</p>
           </div>
         </div>
-        <div class="roadmap-detail" id="roadmap-detail"></div>
       </div>
 
       <!-- Optional — from new Dashboard columns "Disease State",
@@ -209,23 +208,18 @@
   }
 
   /**
-   * Build the roadmap checkpoints for one project.
+   * Build the syllabus timeline for the Overview tab.
    *
-   * A checkpoint is "reached" when an Update Log entry matches its Expected
-   * Stage. Deliberately NOT bound by the checkpoint's own calendar week —
-   * this reflects the team's actual biodesign progress, not their alignment
-   * to the syllabus timeline. A team that prototypes in Week 3 should show
-   * that; a team still finding needs in Week 8 should show that too.
+   * Hard-synced to the actual class calendar — a week is "reached" purely
+   * because its date has passed, identical for every project. Previously
+   * this matched each project's own Update Log entries against Expected
+   * Stage, which let a team that logged "Prototyping" early light up
+   * Weeks 4-5 while the class was still in Week 3 — confusing on a
+   * timeline whose whole point is "where is the class right now."
    *
-   * The one guard that stays: each log claims the EARLIEST still-unclaimed
-   * checkpoint with a matching stage, so N entries light N nodes rather
-   * than every node that happens to share a stage (Prototyping spans
-   * Weeks 5-7 in ENRH 116 — one entry must not light all three).
-   *
-   * Pure: no DOM, no globals. `today` is injected for the separate
-   * calendar-week marker, not used in the reach calculation itself.
+   * Pure: no DOM, no globals, no per-project log data at all.
    */
-  function buildCheckpoints(syllabusRows, logs, today) {
+  function buildSyllabusCalendar(syllabusRows, today) {
     const checkpoints = syllabusRows
       .slice()
       .sort((a, b) => (parseFloat(a["Week"]) || 0) - (parseFloat(b["Week"]) || 0))
@@ -236,29 +230,8 @@
         topic: row["Topic"] || "",
         expectedStage: (row["Expected Stage"] || "").trim(),
         reached: false,
-        actualDate: null,
-        debrief: "",
       }));
-
-    // Walk logs oldest-first so the earliest log claims the earliest
-    // matching checkpoint — this is what prevents one entry from lighting
-    // every week that shares its stage.
-    logs
-      .filter(l => tsOf(l))
-      .sort(byTimestamp)
-      .forEach(l => {
-        const stage = (l["Biodesign Stage"] || "").trim().toLowerCase();
-        if (!stage) return;
-        const cp = checkpoints.find(c =>
-          !c.reached && c.expectedStage.toLowerCase() === stage
-        );
-        if (cp) {
-          cp.reached = true;
-          cp.actualDate = formatGvizDate(l["Timestamp"]);
-          cp.debrief = l["Description"] || "";
-        }
-      });
-
+    checkpoints.forEach(c => { c.reached = !!(c.rawDate && c.rawDate <= today); });
     return checkpoints;
   }
 
@@ -432,8 +405,6 @@
       const isComplete = (project && project["Project Status"] || "").trim().toLowerCase() === "complete";
       document.getElementById("health-text").innerHTML =
         `<strong>${isComplete ? "Pending" : escapeHtml(project ? project["Overall Health"] : "Unknown")}</strong>`;
-      document.getElementById("next-pres-text").innerHTML =
-        `<strong>${escapeHtml(project && project["Next Presentation"] ? formatGvizDate(project["Next Presentation"]) : "TBD")}</strong>`;
 
       // ── Optional Overview narrative fields — all new Dashboard columns,
       //    all hidden gracefully when not yet filled in for this project ──
@@ -512,7 +483,6 @@
         // Hide the fill-bar timeline entirely; repurpose the track container
         document.querySelector(".roadmap-line-bg").style.display = "none";
         document.getElementById("roadmap-fill").style.display = "none";
-        document.getElementById("roadmap-detail").style.display = "none";
 
         const sortedLogs = logs.slice().sort(byTimestamp);
         const nodesEl = document.getElementById("roadmap-nodes");
@@ -531,32 +501,27 @@
         }
 
       } else {
-      // ── Standard track: Roadmap ──
+      // ── Standard track: Timeline, synced to the class calendar ──
       // Syllabus Map rows are the fixed checkpoints (ordered by Week).
-      // See buildCheckpoints for the reach rules.
+      // See buildSyllabusCalendar for the reach rule — pure calendar date,
+      // not this project's own Update Log entries.
       const today = new Date();
       today.setHours(0,0,0,0);
-      const checkpoints = buildCheckpoints(syllabus, logs, today);
+      const checkpoints = buildSyllabusCalendar(syllabus, today);
 
-      // The calendar's current week, independent of this project's own
-      // progress, so a project with no logs yet still shows where the
-      // course actually is right now instead of defaulting to Week 1.
-      let calendarWeekIdx = -1;
-      checkpoints.forEach((c, i) => { if (c.rawDate && c.rawDate <= today) calendarWeekIdx = i; });
-
-      const lastReachedIdx = checkpoints.reduce((acc, c, i) => (c.reached ? i : acc), -1);
+      // With reach now purely calendar-based, "current" is just the most
+      // recently passed week — no separate per-project tracking needed.
+      const currentWeekIdx = checkpoints.reduce((acc, c, i) => (c.reached ? i : acc), -1);
       const nodesEl = document.getElementById("roadmap-nodes");
       const fillEl = document.getElementById("roadmap-fill");
-      const detailEl = document.getElementById("roadmap-detail");
 
       if (!checkpoints.length) {
         nodesEl.innerHTML = `<p class="state-message-dark">No syllabus checkpoints found.</p>`;
       } else {
         nodesEl.innerHTML = checkpoints.map((c, i) => {
-          const isCurrentWeek = i === calendarWeekIdx;
-          const cls = c.reached ? "reached" : (isCurrentWeek ? "current" : "");
+          const cls = i === currentWeekIdx ? "current" : (c.reached ? "reached" : "");
           return `
-            <div class="roadmap-node ${cls}" data-idx="${i}">
+            <div class="roadmap-node ${cls}">
               <div class="roadmap-dot"></div>
               <div class="roadmap-node-week">Wk ${escapeHtml(c.week)}</div>
               <div class="roadmap-node-stage">${escapeHtml(c.expectedStage)}</div>
@@ -564,24 +529,6 @@
         }).join("");
 
         fillEl.style.width = roadmapFillPct(checkpoints) + "%";
-
-        function showDetail(idx) {
-          const c = checkpoints[idx];
-          detailEl.classList.add("open");
-          detailEl.innerHTML = `
-            <div class="roadmap-detail-title">Week ${escapeHtml(c.week)} — ${escapeHtml(c.topic)}</div>
-            <div class="roadmap-detail-meta">${escapeHtml(c.expectedStage)} · Target: ${escapeHtml(c.targetDate)}${c.reached ? " · Reached: " + escapeHtml(c.actualDate) : " · Not yet reached"}</div>
-            <div class="roadmap-detail-body">${escapeHtml(c.debrief) || (c.reached ? "No debrief logged for this checkpoint." : "Awaiting an Update Log entry for this stage.")}</div>`;
-        }
-
-        nodesEl.querySelectorAll(".roadmap-node").forEach(node => {
-          node.addEventListener("click", () => showDetail(parseInt(node.dataset.idx, 10)));
-        });
-
-        // Auto-open the most recently reached checkpoint by default, or
-        // the calendar's current week if this project has no logs yet.
-        if (lastReachedIdx >= 0) showDetail(lastReachedIdx);
-        else if (calendarWeekIdx >= 0) showDetail(calendarWeekIdx);
       }
       } // end standard-tracking else branch
 
@@ -590,6 +537,13 @@
       today.setHours(0, 0, 0, 0);
       const deliverableSummary = buildDeliverableSummary(deliverables, projectId, today);
       renderDeliverablesList(document.getElementById("deliverables-list"), deliverableSummary);
+
+      // ── Next Deadline (Status quad) — linked to Deliverables, not a
+      //    manually-typed Dashboard field. See nextDeadlineFrom in sheets.js. ──
+      const nextDeadline = nextDeadlineFrom(deliverableSummary.items);
+      document.getElementById("next-pres-text").innerHTML = nextDeadline
+        ? `<strong>${escapeHtml(nextDeadline.deliverable)} — ${nextDeadline.dueDate ? escapeHtml(fmtShortDate(nextDeadline.dueDate)) : "date TBD"}</strong>`
+        : `<strong>All caught up</strong>`;
 
       const presEl = document.getElementById("presentations-row");
       if (pres.length) {
