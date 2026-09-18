@@ -228,8 +228,14 @@
    */
   function buildSyllabusCalendar(syllabusRows, today) {
     const checkpoints = syllabusRows
+      // Drop any row without a real numeric Week — e.g. a note/instruction
+      // row like "PRE-LOADED FROM ENRH 116 FALL 2026 SYLLABUS. EDIT ONLY IF
+      // THE SYLLABUS CHANGES." sitting above the real Week 1 row. Without
+      // this filter, parseFloat(undefined) || 0 sorted such a row to the
+      // very front and rendered it as a phantom "Week" node with no number.
+      .filter(row => !isNaN(parseFloat(row["Week"])))
       .slice()
-      .sort((a, b) => (parseFloat(a["Week"]) || 0) - (parseFloat(b["Week"]) || 0))
+      .sort((a, b) => parseFloat(a["Week"]) - parseFloat(b["Week"]))
       .map(row => ({
         week: row["Week"],
         rawDate: parseGvizDate(row["Date"]),
@@ -265,7 +271,7 @@
   // deployment notes handed to Durga alongside this file). Left blank,
   // the page can't fetch anything — which is the safe failure mode,
   // not an accident.
-  const GATED_API_URL = "https://script.google.com/macros/s/AKfycbxEFmjP5-ngT_tFtgDdt9Bv8X3_z4SAcEVwIRE4EGuNnmHWu9Bgo_yBEpg0CnjIloM8/exec";
+  const GATED_API_URL = "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE";
   const ADMIN_TOKEN_STORAGE_KEY = "bi_admin_token";
 
   const urlToken = params.get("token");
