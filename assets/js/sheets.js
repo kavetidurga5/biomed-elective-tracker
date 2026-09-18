@@ -222,6 +222,39 @@ function nextDeadlineFrom(deliverableItems) {
 }
 
 /**
+ * Student Portal — real per-project access gating.
+ *
+ * Replaces the earlier "unguessable link" soft approach: this page now
+ * fetches from a token-gated Apps Script endpoint instead of the open
+ * Sheet, so a student with only their own project's link genuinely
+ * cannot pull another team's data — it never reaches their browser.
+ * The Apps Script side (doGet handler) isn't in this repo; it lives in
+ * the Sheet's own script editor. See the deployment notes.
+ *
+ * Deliberately not built on the URL global — it's a WHATWG API, not
+ * guaranteed in every JS runtime this might run in (including this
+ * project's own test harness's bare vm context), and string
+ * concatenation does the whole job here anyway.
+ */
+function buildGatedApiUrl(apiBase, projectName, token) {
+  const sep = apiBase.includes("?") ? "&" : "?";
+  return `${apiBase}${sep}project=${encodeURIComponent(projectName)}&token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Normalizes the gated endpoint's JSON response into one shape callers
+ * can branch on once. The endpoint returns { error: "..." } on a bad,
+ * missing, or wrong token, and the six data arrays on success — never
+ * both, so checking for `error` first is a safe, complete discriminator.
+ */
+function parseGatedResponse(json) {
+  if (json && typeof json.error === "string") {
+    return { ok: false, error: json.error };
+  }
+  return { ok: true, data: json };
+}
+
+/**
  * Student Portal — Team tab.
  *
  * Every Roster row for a project, reshaped into a display-ready team
