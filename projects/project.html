@@ -36,7 +36,14 @@
     </h1>
     <p class="detail-body" id="project-subtitle">Fetching live status from the team's tracker…</p>
 
-    <div class="portal-tabs" id="portal-tabs" role="tablist">
+    <div id="admin-key-section" style="display:none; margin: 20px 0;">
+      <label for="admin-key-input" style="display:block; font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:8px;">Admin access key</label>
+      <input type="password" id="admin-key-input" placeholder="Paste the admin key" style="padding:8px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.06); color:#fff; font-size:14px; width:260px; margin-right:8px;"/>
+      <button id="admin-key-submit" style="padding:8px 16px; border-radius:6px; border:none; background:var(--teal); color:#fff; font-weight:600; cursor:pointer; font-size:14px;">Unlock</button>
+      <p id="admin-key-error" style="display:none; color:#e88; font-size:13px; margin-top:8px;">That key didn't work for this project.</p>
+    </div>
+
+    <div class="portal-tabs" id="portal-tabs" role="tablist" style="display:none;">
       <button class="portal-tab active" id="tab-btn-overview" role="tab" aria-selected="true" aria-controls="tab-panel-overview">Overview</button>
       <button class="portal-tab" id="tab-btn-team" role="tab" aria-selected="false" aria-controls="tab-panel-team">Team</button>
       <button class="portal-tab" id="tab-btn-needs" role="tab" aria-selected="false" aria-controls="tab-panel-needs">Team Needs</button>
@@ -253,6 +260,41 @@
   const params = new URLSearchParams(window.location.search);
   const projectId = params.get("id");
 
+  // ── Real per-project access gating ──────────────────────────────────
+  // Fill this in once the Apps Script Web App is deployed (see the
+  // deployment notes handed to Durga alongside this file). Left blank,
+  // the page can't fetch anything — which is the safe failure mode,
+  // not an accident.
+  const GATED_API_URL = "https://script.google.com/macros/s/AKfycbxEFmjP5-ngT_tFtgDdt9Bv8X3_z4SAcEVwIRE4EGuNnmHWu9Bgo_yBEpg0CnjIloM8/exec";
+  const ADMIN_TOKEN_STORAGE_KEY = "bi_admin_token";
+
+  const urlToken = params.get("token");
+  // An admin who has previously entered the admin key on this device
+  // gets it back from localStorage — private to their own browser, never
+  // embedded in any link or page source, so it can't leak to a student
+  // just by them viewing page source or the projects list.
+  let effectiveToken = urlToken || (function () {
+    try { return localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""; }
+    catch (e) { return ""; } // localStorage can throw in locked-down browsers
+  })();
+
+  async function fetchGatedProjectData(project, token) {
+    const url = buildGatedApiUrl(GATED_API_URL, project, token);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Gated endpoint returned HTTP ${res.status}`);
+    const json = await res.json();
+    return parseGatedResponse(json);
+  }
+
+  function showAccessDenied(message) {
+    document.getElementById("project-title").textContent = "Access restricted";
+    document.getElementById("project-subtitle").innerHTML =
+      `<span class="state-error-dark"><strong>${escapeHtml(message)}</strong> ` +
+      `If you were sent a link, make sure you copied the whole thing, including everything after "&amp;token=". ` +
+      `If you're an admin, enter the access key below.</span>`;
+    document.getElementById("admin-key-section").style.display = "block";
+  }
+
   // Normalize a Project value for matching across tabs. A trailing space
   // in one tab (e.g. Roster) previously broke an exact === match against
   // Dashboard, silently producing "Team: Not yet assigned" with no error.
@@ -386,218 +428,262 @@
 
   wireTabs();
 
+  // Renders the whole page once we have this project's data — identical
+  // rendering logic to before; only how the data arrives has changed.
+  // `dashboard`/`presentations`/`updateLog`/`deliverables`/`roster` are
+  // already filtered to this one project by the gated endpoint itself
+  // (except `syllabus`, the shared course schedule) — no client-side
+  // `.find`/`.filter` needed anymore, which also means a compromised or
+  // buggy client can't accidentally request or display another
+  // project's rows even by mistake.
+  function renderProject({ dashboard, roster, presentations, syllabus, updateLog, deliverables }) {
+    const project = dashboard[0] || null;
+    const pres = presentations;
+    const logs = updateLog;
+
+    document.getElementById("project-title").textContent = projectId;
+    document.title = `${projectId} — Biomedical Innovations, UTSW`;
+    document.getElementById("project-subtitle").textContent =
+      project ? "Live status for this project, pulled directly from the team's tracker." : "No dashboard entry found for this project yet.";
+
+    document.getElementById("stage-text").innerHTML =
+      `<strong>${escapeHtml(project ? project["Current Stage"] : "Not yet set")}</strong>`;
+    const isComplete = (project && project["Project Status"] || "").trim().toLowerCase() === "complete";
+    document.getElementById("health-text").innerHTML =
+      `<strong>${isComplete ? "Pending" : escapeHtml(project ? project["Overall Health"] : "Unknown")}</strong>`;
+
+    // ── Optional Overview narrative fields — all new Dashboard columns,
+    //    all hidden gracefully when not yet filled in for this project ──
+    const pitch = project && project["Elevator Pitch"] ? project["Elevator Pitch"].trim() : "";
+    const statNum = project && project["Key Stat Number"] ? project["Key Stat Number"].trim() : "";
+    const statText = project && project["Key Stat Text"] ? project["Key Stat Text"].trim() : "";
+    if (pitch || statNum) {
+      document.getElementById("overview-pitch-section").style.display = "block";
+      document.getElementById("overview-pitch-text").textContent = pitch;
+      if (statNum) {
+        document.getElementById("overview-stat-block").style.display = "flex";
+        document.getElementById("overview-stat-num").textContent = statNum;
+        document.getElementById("overview-stat-text").textContent = statText;
+      }
+    }
+
+    const diseaseState = project && project["Disease State"] ? project["Disease State"].trim() : "";
+    const demographic = project && project["Affected Demographic"] ? project["Affected Demographic"].trim() : "";
+    if (diseaseState || demographic) {
+      document.getElementById("disease-section").style.display = "block";
+      document.getElementById("disease-state-text").textContent = diseaseState || "Not yet added";
+      document.getElementById("demographic-text").textContent = demographic || "Not yet added";
+    }
+
+    const problemStatement = project && project["Problem Statement"] ? project["Problem Statement"].trim() : "";
+    const gap = project && project["Gap"] ? project["Gap"].trim() : "";
+    if (problemStatement || gap) {
+      document.getElementById("problem-gap-section").style.display = "block";
+      if (problemStatement) {
+        document.getElementById("problem-block").style.display = "block";
+        document.getElementById("problem-text").textContent = problemStatement;
+      }
+      if (gap) {
+        document.getElementById("gap-block").style.display = "block";
+        document.getElementById("gap-text").textContent = gap;
+      }
+    }
+
+    // ── Poster (shown only if Dashboard has a Poster PDF filename set) ──
+    const posterPdf = project && project["Poster PDF"] ? project["Poster PDF"].trim() : "";
+    if (posterPdf) {
+      const posterImg = project["Poster Image"] ? project["Poster Image"].trim() : "";
+      document.getElementById("poster-section").style.display = "block";
+      document.getElementById("poster-link").href = `../assets/docs/${posterPdf}`;
+      const imgEl = document.getElementById("poster-img");
+      // A missing/mistyped image filename previously showed a broken-image
+      // icon inside the navy hero. Hide just the image on failure — the
+      // PDF link and label below it stay usable either way.
+      imgEl.onerror = () => { imgEl.style.display = "none"; };
+      imgEl.src = posterImg
+        ? `../assets/img/posters/${posterImg}`
+        : `../assets/img/posters/${posterPdf.replace(/\.pdf$/i, ".jpg")}`;
+    } else {
+      // No live "publications" data source yet — the poster is the only
+      // thing that's lived here so far. Empty state until that changes.
+      document.getElementById("pubs-empty-note").style.display = "block";
+    }
+
+    // ── Completion badge ──
+    const projectStatus = (project && project["Project Status"] || "Active").trim().toLowerCase();
+    if (projectStatus === "complete") {
+      document.getElementById("status-badge").style.display = "inline-block";
+    }
+
+    // ── Tracking mode: Standard (syllabus-matched) vs Custom (exception) ──
+    const trackingMode = (project && project["Tracking Mode"] || "Standard").trim().toLowerCase();
+
+    if (trackingMode === "custom") {
+      // Custom track: no syllabus alignment. Show a plain chronological
+      // log built directly from this project's Update Log entries.
+      document.getElementById("roadmap-heading").textContent = "Progress Log";
+      const noteEl = document.getElementById("roadmap-note");
+      noteEl.style.display = "block";
+      noteEl.textContent = "This project didn't follow the standard syllabus timeline — progress is tracked here as a chronological log instead.";
+
+      // Hide the fill-bar timeline entirely; repurpose the track container
+      document.querySelector(".roadmap-line-bg").style.display = "none";
+      document.getElementById("roadmap-fill").style.display = "none";
+
+      const sortedLogs = logs.slice().sort(byTimestamp);
+      const nodesEl = document.getElementById("roadmap-nodes");
+      if (!sortedLogs.length) {
+        nodesEl.innerHTML = `<p class="state-message-dark">No progress entries logged yet.</p>`;
+      } else {
+        nodesEl.innerHTML = `<div class="milestone-list">` + sortedLogs.map(l => `
+          <div class="milestone-item">
+            <div class="milestone-dot"></div>
+            <div>
+              <div class="milestone-date">${escapeHtml(formatGvizDate(l["Timestamp"]))} · ${escapeHtml(l["Biodesign Stage"] || "")}</div>
+              <div class="milestone-stage">${escapeHtml(l["Entry Type"] || "Update")}</div>
+              <div class="milestone-desc">${escapeHtml(l["Description"] || "")}</div>
+            </div>
+          </div>`).join("") + `</div>`;
+      }
+
+    } else {
+    // ── Standard track: Timeline, synced to the class calendar ──
+    // Syllabus Map rows are the fixed checkpoints (ordered by Week).
+    // See buildSyllabusCalendar for the reach rule — pure calendar date,
+    // not this project's own Update Log entries.
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const checkpoints = buildSyllabusCalendar(syllabus, today);
+
+    // With reach now purely calendar-based, "current" is just the most
+    // recently passed week — no separate per-project tracking needed.
+    const currentWeekIdx = checkpoints.reduce((acc, c, i) => (c.reached ? i : acc), -1);
+    const nodesEl = document.getElementById("roadmap-nodes");
+    const fillEl = document.getElementById("roadmap-fill");
+
+    if (!checkpoints.length) {
+      nodesEl.innerHTML = `<p class="state-message-dark">No syllabus checkpoints found.</p>`;
+    } else {
+      nodesEl.innerHTML = checkpoints.map((c, i) => {
+        const cls = i === currentWeekIdx ? "current" : (c.reached ? "reached" : "");
+        return `
+          <div class="roadmap-node ${cls}">
+            <div class="roadmap-dot"></div>
+            <div class="roadmap-node-week">Wk ${escapeHtml(c.week)}</div>
+            <div class="roadmap-node-stage">${escapeHtml(c.expectedStage)}</div>
+          </div>`;
+      }).join("");
+
+      fillEl.style.width = roadmapFillPct(checkpoints) + "%";
+    }
+    } // end standard-tracking else branch
+
+    // ── Deliverables checklist (M-3) ──────────────────────────────
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const deliverableSummary = buildDeliverableSummary(deliverables, projectId, today);
+    renderDeliverablesList(document.getElementById("deliverables-list"), deliverableSummary);
+
+    // ── Next Deadline (Status quad) — linked to Deliverables, not a
+    //    manually-typed Dashboard field. See nextDeadlineFrom in sheets.js. ──
+    const nextDeadline = nextDeadlineFrom(deliverableSummary.items);
+    document.getElementById("next-pres-text").innerHTML = nextDeadline
+      ? `<strong>${escapeHtml(nextDeadline.deliverable)} — ${nextDeadline.dueDate ? escapeHtml(fmtShortDate(nextDeadline.dueDate)) : "date TBD"}</strong>`
+      : `<strong>All caught up</strong>`;
+
+    const presEl = document.getElementById("presentations-row");
+    if (pres.length) {
+      presEl.innerHTML = pres.map(p => {
+        const name = p["Event Name"] || p["Presentation Type"] || "Presentation";
+        // Quote-escaping alone stops attribute breakout; scheme
+        // whitelisting also stops a "javascript:" or "data:" Link cell
+        // from ever becoming a clickable href in the first place.
+        const link = safeLink(p["Link"]);
+        const inner = `
+          <span class="conf-pill-icon">📋</span>
+          <div class="conf-pill-text">
+            <span class="conf-pill-name">${escapeHtml(name)}</span>
+            <span class="conf-pill-date">${escapeHtml(formatGvizDate(p["Date"]))} · ${escapeHtml(p["Prep Status"] || "")}${p["Owner"] ? " · " + escapeHtml(p["Owner"]) : ""}</span>
+          </div>`;
+        return link
+          ? `<a class="conf-pill" href="${escapeHtml(link)}" target="_blank" rel="noopener">${inner}</a>`
+          : `<div class="conf-pill">${inner}</div>`;
+      }).join("");
+    } else {
+      presEl.innerHTML = `<p class="state-message-dark">No presentations scheduled yet.</p>`;
+    }
+
+    // ── Meeting Notes & Milestones tab ──
+    renderMilestoneFeedTable(document.getElementById("milestone-feed-body"), buildMilestoneFeed(logs));
+
+    // ── Team tab ──
+    renderTeamTab(document.getElementById("team-grid"), buildTeamRoster(roster, projectId));
+
+    // ── Team Needs tab ──
+    renderTeamNeedsTab(document.getElementById("team-needs-list"), buildTeamNeeds(logs));
+  }
+
+  function showLoadError(err) {
+    console.error("Failed to load project tabs:", err);
+    document.getElementById("project-title").textContent = "Couldn't load project data";
+    document.getElementById("project-subtitle").innerHTML =
+      `<span class="state-error-dark"><strong>The tracker didn't load.</strong> ` +
+      `Nothing below is current. Try refreshing; if it persists, check that the gated endpoint is deployed and reachable.</span>`;
+    // Replace every "Loading…" region so none of them sit there forever
+    // implying data is still on its way.
+    document.getElementById("roadmap-nodes").innerHTML =
+      `<p class="state-error-dark">Roadmap unavailable — data did not load.</p>`;
+    document.getElementById("presentations-row").innerHTML =
+      `<p class="state-error-dark">Presentations unavailable — data did not load.</p>`;
+    document.getElementById("deliverables-list").innerHTML =
+      `<p class="state-error-dark">Deliverables unavailable — data did not load.</p>`;
+    document.getElementById("milestone-feed-body").innerHTML =
+      `<tr><td colspan="4"><p class="state-error-dark">Meeting notes unavailable — data did not load.</p></td></tr>`;
+    document.getElementById("team-grid").innerHTML =
+      `<p class="state-error-dark">Team info unavailable — data did not load.</p>`;
+    document.getElementById("team-needs-list").innerHTML =
+      `<p class="state-error-dark">Team needs unavailable — data did not load.</p>`;
+    ["stage-text","health-text","next-pres-text"]
+      .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
+  }
+
+  // Attempts to load and render this project with a given token. Used
+  // both on initial page load and when an admin submits the access-key
+  // form, so both paths share the exact same success/failure handling.
+  function attemptLoad(token) {
+    withTimeout(fetchGatedProjectData(projectId, token), 15000, "project data").then(result => {
+      if (!result.ok) {
+        showAccessDenied(result.error || "Access denied.");
+        // A previously-saved admin key that no longer works shouldn't
+        // keep silently failing on every future visit.
+        try { localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY); } catch (e) {}
+        document.getElementById("admin-key-error").style.display = urlToken ? "none" : "block";
+        return;
+      }
+      // Reached via a manually-entered admin key (not the URL) — remember
+      // it for next time on this device. A URL token is per-project by
+      // design; there's nothing extra to remember for it.
+      if (!urlToken) {
+        try { localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token); } catch (e) {}
+      }
+      document.getElementById("admin-key-section").style.display = "none";
+      document.getElementById("portal-tabs").style.display = "flex";
+      renderProject(result.data);
+    }).catch(showLoadError);
+  }
+
+  document.getElementById("admin-key-submit").addEventListener("click", () => {
+    const key = document.getElementById("admin-key-input").value.trim();
+    if (key) attemptLoad(key);
+  });
+
   if (!projectId) {
     document.getElementById("project-title").textContent = "No project specified";
     document.getElementById("project-subtitle").textContent = "Go back to Projects and pick one from the list.";
+  } else if (!effectiveToken) {
+    showAccessDenied("This page needs a project-specific access link.");
   } else {
-    withTimeout(fetchAllTabs(), 15000, "project data").then(({ dashboard, roster, presentations, syllabus, updateLog, deliverables }) => {
-      const project = dashboard.find(r => projectKey(r["Project"]) === projectKey(projectId));
-      const pres = presentations.filter(r => projectKey(r["Project"]) === projectKey(projectId));
-      const logs = updateLog.filter(r => projectKey(r["Project"]) === projectKey(projectId));
-
-      document.getElementById("project-title").textContent = projectId;
-      document.title = `${projectId} — Biomedical Innovations, UTSW`;
-      document.getElementById("project-subtitle").textContent =
-        project ? "Live status for this project, pulled directly from the team's tracker." : "No dashboard entry found for this project yet.";
-
-      document.getElementById("stage-text").innerHTML =
-        `<strong>${escapeHtml(project ? project["Current Stage"] : "Not yet set")}</strong>`;
-      const isComplete = (project && project["Project Status"] || "").trim().toLowerCase() === "complete";
-      document.getElementById("health-text").innerHTML =
-        `<strong>${isComplete ? "Pending" : escapeHtml(project ? project["Overall Health"] : "Unknown")}</strong>`;
-
-      // ── Optional Overview narrative fields — all new Dashboard columns,
-      //    all hidden gracefully when not yet filled in for this project ──
-      const pitch = project && project["Elevator Pitch"] ? project["Elevator Pitch"].trim() : "";
-      const statNum = project && project["Key Stat Number"] ? project["Key Stat Number"].trim() : "";
-      const statText = project && project["Key Stat Text"] ? project["Key Stat Text"].trim() : "";
-      if (pitch || statNum) {
-        document.getElementById("overview-pitch-section").style.display = "block";
-        document.getElementById("overview-pitch-text").textContent = pitch;
-        if (statNum) {
-          document.getElementById("overview-stat-block").style.display = "flex";
-          document.getElementById("overview-stat-num").textContent = statNum;
-          document.getElementById("overview-stat-text").textContent = statText;
-        }
-      }
-
-      const diseaseState = project && project["Disease State"] ? project["Disease State"].trim() : "";
-      const demographic = project && project["Affected Demographic"] ? project["Affected Demographic"].trim() : "";
-      if (diseaseState || demographic) {
-        document.getElementById("disease-section").style.display = "block";
-        document.getElementById("disease-state-text").textContent = diseaseState || "Not yet added";
-        document.getElementById("demographic-text").textContent = demographic || "Not yet added";
-      }
-
-      const problemStatement = project && project["Problem Statement"] ? project["Problem Statement"].trim() : "";
-      const gap = project && project["Gap"] ? project["Gap"].trim() : "";
-      if (problemStatement || gap) {
-        document.getElementById("problem-gap-section").style.display = "block";
-        if (problemStatement) {
-          document.getElementById("problem-block").style.display = "block";
-          document.getElementById("problem-text").textContent = problemStatement;
-        }
-        if (gap) {
-          document.getElementById("gap-block").style.display = "block";
-          document.getElementById("gap-text").textContent = gap;
-        }
-      }
-
-      // ── Poster (shown only if Dashboard has a Poster PDF filename set) ──
-      const posterPdf = project && project["Poster PDF"] ? project["Poster PDF"].trim() : "";
-      if (posterPdf) {
-        const posterImg = project["Poster Image"] ? project["Poster Image"].trim() : "";
-        document.getElementById("poster-section").style.display = "block";
-        document.getElementById("poster-link").href = `../assets/docs/${posterPdf}`;
-        const imgEl = document.getElementById("poster-img");
-        // A missing/mistyped image filename previously showed a broken-image
-        // icon inside the navy hero. Hide just the image on failure — the
-        // PDF link and label below it stay usable either way.
-        imgEl.onerror = () => { imgEl.style.display = "none"; };
-        imgEl.src = posterImg
-          ? `../assets/img/posters/${posterImg}`
-          : `../assets/img/posters/${posterPdf.replace(/\.pdf$/i, ".jpg")}`;
-      } else {
-        // No live "publications" data source yet — the poster is the only
-        // thing that's lived here so far. Empty state until that changes.
-        document.getElementById("pubs-empty-note").style.display = "block";
-      }
-
-      // ── Completion badge ──
-      const projectStatus = (project && project["Project Status"] || "Active").trim().toLowerCase();
-      if (projectStatus === "complete") {
-        document.getElementById("status-badge").style.display = "inline-block";
-      }
-
-      // ── Tracking mode: Standard (syllabus-matched) vs Custom (exception) ──
-      const trackingMode = (project && project["Tracking Mode"] || "Standard").trim().toLowerCase();
-
-      if (trackingMode === "custom") {
-        // Custom track: no syllabus alignment. Show a plain chronological
-        // log built directly from this project's Update Log entries.
-        document.getElementById("roadmap-heading").textContent = "Progress Log";
-        const noteEl = document.getElementById("roadmap-note");
-        noteEl.style.display = "block";
-        noteEl.textContent = "This project didn't follow the standard syllabus timeline — progress is tracked here as a chronological log instead.";
-
-        // Hide the fill-bar timeline entirely; repurpose the track container
-        document.querySelector(".roadmap-line-bg").style.display = "none";
-        document.getElementById("roadmap-fill").style.display = "none";
-
-        const sortedLogs = logs.slice().sort(byTimestamp);
-        const nodesEl = document.getElementById("roadmap-nodes");
-        if (!sortedLogs.length) {
-          nodesEl.innerHTML = `<p class="state-message-dark">No progress entries logged yet.</p>`;
-        } else {
-          nodesEl.innerHTML = `<div class="milestone-list">` + sortedLogs.map(l => `
-            <div class="milestone-item">
-              <div class="milestone-dot"></div>
-              <div>
-                <div class="milestone-date">${escapeHtml(formatGvizDate(l["Timestamp"]))} · ${escapeHtml(l["Biodesign Stage"] || "")}</div>
-                <div class="milestone-stage">${escapeHtml(l["Entry Type"] || "Update")}</div>
-                <div class="milestone-desc">${escapeHtml(l["Description"] || "")}</div>
-              </div>
-            </div>`).join("") + `</div>`;
-        }
-
-      } else {
-      // ── Standard track: Timeline, synced to the class calendar ──
-      // Syllabus Map rows are the fixed checkpoints (ordered by Week).
-      // See buildSyllabusCalendar for the reach rule — pure calendar date,
-      // not this project's own Update Log entries.
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const checkpoints = buildSyllabusCalendar(syllabus, today);
-
-      // With reach now purely calendar-based, "current" is just the most
-      // recently passed week — no separate per-project tracking needed.
-      const currentWeekIdx = checkpoints.reduce((acc, c, i) => (c.reached ? i : acc), -1);
-      const nodesEl = document.getElementById("roadmap-nodes");
-      const fillEl = document.getElementById("roadmap-fill");
-
-      if (!checkpoints.length) {
-        nodesEl.innerHTML = `<p class="state-message-dark">No syllabus checkpoints found.</p>`;
-      } else {
-        nodesEl.innerHTML = checkpoints.map((c, i) => {
-          const cls = i === currentWeekIdx ? "current" : (c.reached ? "reached" : "");
-          return `
-            <div class="roadmap-node ${cls}">
-              <div class="roadmap-dot"></div>
-              <div class="roadmap-node-week">Wk ${escapeHtml(c.week)}</div>
-              <div class="roadmap-node-stage">${escapeHtml(c.expectedStage)}</div>
-            </div>`;
-        }).join("");
-
-        fillEl.style.width = roadmapFillPct(checkpoints) + "%";
-      }
-      } // end standard-tracking else branch
-
-      // ── Deliverables checklist (M-3) ──────────────────────────────
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const deliverableSummary = buildDeliverableSummary(deliverables, projectId, today);
-      renderDeliverablesList(document.getElementById("deliverables-list"), deliverableSummary);
-
-      // ── Next Deadline (Status quad) — linked to Deliverables, not a
-      //    manually-typed Dashboard field. See nextDeadlineFrom in sheets.js. ──
-      const nextDeadline = nextDeadlineFrom(deliverableSummary.items);
-      document.getElementById("next-pres-text").innerHTML = nextDeadline
-        ? `<strong>${escapeHtml(nextDeadline.deliverable)} — ${nextDeadline.dueDate ? escapeHtml(fmtShortDate(nextDeadline.dueDate)) : "date TBD"}</strong>`
-        : `<strong>All caught up</strong>`;
-
-      const presEl = document.getElementById("presentations-row");
-      if (pres.length) {
-        presEl.innerHTML = pres.map(p => {
-          const name = p["Event Name"] || p["Presentation Type"] || "Presentation";
-          // Quote-escaping alone stops attribute breakout; scheme
-          // whitelisting also stops a "javascript:" or "data:" Link cell
-          // from ever becoming a clickable href in the first place.
-          const link = safeLink(p["Link"]);
-          const inner = `
-            <span class="conf-pill-icon">📋</span>
-            <div class="conf-pill-text">
-              <span class="conf-pill-name">${escapeHtml(name)}</span>
-              <span class="conf-pill-date">${escapeHtml(formatGvizDate(p["Date"]))} · ${escapeHtml(p["Prep Status"] || "")}${p["Owner"] ? " · " + escapeHtml(p["Owner"]) : ""}</span>
-            </div>`;
-          return link
-            ? `<a class="conf-pill" href="${escapeHtml(link)}" target="_blank" rel="noopener">${inner}</a>`
-            : `<div class="conf-pill">${inner}</div>`;
-        }).join("");
-      } else {
-        presEl.innerHTML = `<p class="state-message-dark">No presentations scheduled yet.</p>`;
-      }
-
-      // ── Meeting Notes & Milestones tab ──
-      renderMilestoneFeedTable(document.getElementById("milestone-feed-body"), buildMilestoneFeed(logs));
-
-      // ── Team tab ──
-      renderTeamTab(document.getElementById("team-grid"), buildTeamRoster(roster, projectId));
-
-      // ── Team Needs tab ──
-      renderTeamNeedsTab(document.getElementById("team-needs-list"), buildTeamNeeds(logs));
-    }).catch(err => {
-      console.error("Failed to load project tabs:", err);
-      document.getElementById("project-title").textContent = "Couldn't load project data";
-      document.getElementById("project-subtitle").innerHTML =
-        `<span class="state-error-dark"><strong>The tracker sheet didn't load.</strong>` +
-        `Nothing below is current. Try refreshing; if it persists, check that the sheet is still shared.</span>`;
-      // Replace every "Loading…" region so none of them sit there forever
-      // implying data is still on its way.
-      document.getElementById("roadmap-nodes").innerHTML =
-        `<p class="state-error-dark">Roadmap unavailable — data did not load.</p>`;
-      document.getElementById("presentations-row").innerHTML =
-        `<p class="state-error-dark">Presentations unavailable — data did not load.</p>`;
-      document.getElementById("deliverables-list").innerHTML =
-        `<p class="state-error-dark">Deliverables unavailable — data did not load.</p>`;
-      document.getElementById("milestone-feed-body").innerHTML =
-        `<tr><td colspan="4"><p class="state-error-dark">Meeting notes unavailable — data did not load.</p></td></tr>`;
-      document.getElementById("team-grid").innerHTML =
-        `<p class="state-error-dark">Team info unavailable — data did not load.</p>`;
-      document.getElementById("team-needs-list").innerHTML =
-        `<p class="state-error-dark">Team needs unavailable — data did not load.</p>`;
-      ["stage-text","health-text","next-pres-text"]
-        .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
-    });
+    attemptLoad(effectiveToken);
   }
 </script>
 
