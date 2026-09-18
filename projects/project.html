@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
+<meta name="referrer" content="no-referrer"/>
 <title>Project — Biomedical Innovations, UTSW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -21,13 +23,13 @@
   </a>
   <nav class="site-topbar-nav">
     <a href="../index.html">Dashboard</a>
-    <a href="index.html" class="active">Projects</a>
+    <a href="index.html" class="active" data-admin-only>Projects</a>
   </nav>
 </header>
 
 <section class="detail-hero">
   <div class="detail-hero-inner">
-    <a class="detail-back" href="index.html">&larr; All Projects</a>
+    <a class="detail-back" href="index.html" data-admin-only>&larr; All Projects</a>
 
     <p class="detail-eyebrow">Active Project</p>
     <h1 class="detail-title">
@@ -267,22 +269,15 @@
   const projectId = params.get("id");
 
   // ── Real per-project access gating ──────────────────────────────────
-  // Fill this in once the Apps Script Web App is deployed (see the
-  // deployment notes handed to Durga alongside this file). Left blank,
-  // the page can't fetch anything — which is the safe failure mode,
-  // not an accident.
-  const GATED_API_URL = "https://script.google.com/macros/s/AKfycbxBLritp6Cirfp76UjZvVs_dI1wjbIZCu6gsV_weDPHAD_er0r1FaVuD4BkFJ-JKA/exec";
-  const ADMIN_TOKEN_STORAGE_KEY = "bi_admin_token";
+  // GATED_API_URL and ADMIN_TOKEN_STORAGE_KEY are defined once in
+  // assets/js/sheets.js (shared by all three pages).
 
   const urlToken = params.get("token");
   // An admin who has previously entered the admin key on this device
   // gets it back from localStorage — private to their own browser, never
   // embedded in any link or page source, so it can't leak to a student
   // just by them viewing page source or the projects list.
-  let effectiveToken = urlToken || (function () {
-    try { return localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""; }
-    catch (e) { return ""; } // localStorage can throw in locked-down browsers
-  })();
+  let effectiveToken = urlToken || getSavedAdminKey();
 
   async function fetchGatedProjectData(project, token) {
     if (GATED_API_URL.includes("PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE")) {
@@ -302,6 +297,9 @@
       `If you were sent a link, make sure you copied the whole thing, including everything after "&amp;token=". ` +
       `If you're an admin, enter the access key below.</span>`;
     document.getElementById("admin-key-section").style.display = "block";
+    // Don't leave the Overview skeleton ("Loading roadmap…", "—") on screen
+    // under a denial message — nothing is ever going to fill it in.
+    document.getElementById("tab-panel-overview").style.display = "none";
   }
 
   // Normalize a Project value for matching across tabs. A trailing space
@@ -422,10 +420,13 @@
       el.innerHTML = `<p class="state-message-dark">No team members on file for this project yet.</p>`;
       return;
     }
+    // Only plain filenames are allowed for headshots — no paths, no "..".
+    const safeFile = f => /^[\w][\w.-]*$/.test(f) && !f.includes("..");
     el.innerHTML = team.map(m => {
-      const avatar = m.headshot
-        ? `<img class="team-headshot" src="../assets/img/team/${escapeHtml(m.headshot)}" alt="${escapeHtml(m.name)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'team-headshot team-headshot-fallback',textContent:'${escapeHtml(initialsOf(m.name))}'}))"/>`
-        : `<div class="team-headshot team-headshot-fallback">${escapeHtml(initialsOf(m.name))}</div>`;
+      const initials = initialsOf(m.name);
+      const avatar = m.headshot && safeFile(m.headshot)
+        ? `<img class="team-headshot" src="../assets/img/team/${escapeHtml(m.headshot)}" alt="${escapeHtml(m.name)}" data-initials="${escapeHtml(initials)}"/>`
+        : `<div class="team-headshot team-headshot-fallback">${escapeHtml(initials)}</div>`;
       return `
         <div class="team-card">
           ${avatar}
@@ -433,6 +434,18 @@
           <div class="team-card-bio">${m.bio ? escapeHtml(m.bio) : "<em>Bio coming soon.</em>"}</div>
         </div>`;
     }).join("");
+    // A missing/mistyped image falls back to initials. Wired here instead of
+    // an inline onerror="" attribute so no cell value is ever run as script.
+    if (el.querySelectorAll) {
+      el.querySelectorAll("img.team-headshot").forEach(img => {
+        img.addEventListener("error", () => {
+          const d = document.createElement("div");
+          d.className = "team-headshot team-headshot-fallback";
+          d.textContent = img.dataset.initials || "";
+          img.replaceWith(d);
+        });
+      });
+    }
   }
 
   wireTabs();
@@ -563,6 +576,9 @@
     const today = new Date();
     today.setHours(0,0,0,0);
     const checkpoints = buildSyllabusCalendar(syllabus, today);
+    // Phones: let the whole timeline (line + nodes) scroll together so the
+    // fill bar stays aligned with the dots.
+    document.getElementById("roadmap-track").classList.add("timeline-scroll");
 
     // With reach now purely calendar-based, "current" is just the most
     // recently passed week — no separate per-project tracking needed.
@@ -598,7 +614,7 @@
     const nextDeadline = nextDeadlineFrom(deliverableSummary.items);
     document.getElementById("next-pres-text").innerHTML = nextDeadline
       ? `<strong>${escapeHtml(nextDeadline.deliverable)} — ${nextDeadline.dueDate ? escapeHtml(fmtShortDate(nextDeadline.dueDate)) : "date TBD"}</strong>`
-      : `<strong>All caught up</strong>`;
+      : `<strong>${deliverableSummary.total ? "All caught up" : "No deliverables tracked"}</strong>`;
 
     const presEl = document.getElementById("presentations-row");
     if (pres.length) {
@@ -660,44 +676,60 @@
       .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
   }
 
-  // Attempts to load and render this project with a given token. Used
-  // both on initial page load and when an admin submits the access-key
-  // form, so both paths share the exact same success/failure handling.
-  function attemptLoad(token) {
+  // Attempts to load and render this project with a given token. Used both
+  // on initial page load and when someone submits the admin-key form.
+  // `fromAdminForm` = true only for the latter, so feedback is right in each case.
+  function setUnlockBusy(busy) {
+    const btn = document.getElementById("admin-key-submit");
+    btn.disabled = busy;
+    btn.textContent = busy ? "Checking…" : "Unlock";
+  }
+
+  function attemptLoad(token, fromAdminForm) {
+    if (fromAdminForm) setUnlockBusy(true);
     withTimeout(fetchGatedProjectData(projectId, token), 15000, "project data").then(result => {
+      if (fromAdminForm) setUnlockBusy(false);
       if (!result.ok) {
         showAccessDenied(result.error || "Access denied.");
-        // A previously-saved admin key that no longer works shouldn't
-        // keep silently failing on every future visit.
-        try { localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY); } catch (e) {}
-        document.getElementById("admin-key-error").style.display = urlToken ? "none" : "block";
+        // Forget the saved admin key only if it is the very key that just
+        // failed — a typo'd student link must not wipe a good saved key.
+        try { if (getSavedAdminKey() === token) localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY); } catch (e) {}
+        // Always tell someone who just typed a key that it didn't work.
+        document.getElementById("admin-key-error").style.display = fromAdminForm ? "block" : "none";
         return;
       }
-      // Reached via a manually-entered admin key (not the URL) — remember
-      // it for next time on this device. A URL token is per-project by
-      // design; there's nothing extra to remember for it.
-      if (!urlToken) {
+      // A manually-entered admin key is remembered on this device. (A URL
+      // token is per-project by design; nothing extra to remember.)
+      if (fromAdminForm) {
         try { localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token); } catch (e) {}
       }
       document.getElementById("admin-key-section").style.display = "none";
+      document.getElementById("admin-key-error").style.display = "none";
+      document.getElementById("tab-panel-overview").style.display = "block";
       document.getElementById("portal-tabs").style.display = "flex";
       renderProject(result.data);
-    }).catch(showLoadError);
+    }).catch(err => {
+      if (fromAdminForm) setUnlockBusy(false);
+      showLoadError(err);
+    });
   }
 
   document.getElementById("admin-key-submit").addEventListener("click", () => {
     const key = document.getElementById("admin-key-input").value.trim();
-    if (key) attemptLoad(key);
+    if (key) attemptLoad(key, true);
   });
 
   if (!projectId) {
     document.getElementById("project-title").textContent = "No project specified";
-    document.getElementById("project-subtitle").textContent = "Go back to Projects and pick one from the list.";
+    document.getElementById("project-subtitle").textContent = "This page needs the personal link you were emailed.";
+    document.getElementById("tab-panel-overview").style.display = "none";
   } else if (!effectiveToken) {
     showAccessDenied("This page needs a project-specific access link.");
   } else {
-    attemptLoad(effectiveToken);
+    attemptLoad(effectiveToken, false);
   }
+
+  applyAdminOnlyNav();
 </script>
 
 </body>
