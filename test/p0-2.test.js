@@ -1,93 +1,68 @@
-/* P0-2 — roadmap reach logic + fill calculation.
+/* Timeline — calendar-synced roadmap.
 
-   Design, per Durga (2026-09-12):
-   - Fill = reachedCount / total (decision B — matches intuition for a
-     single reached checkpoint, e.g. 1/12 ≈ 8%, not the brief's original
-     "index of furthest node" math).
-   - Reach is NOT bound by the checkpoint's calendar week. The roadmap
-     reflects actual biodesign progress, not alignment to the syllabus
-     timeline — a team ahead of or behind schedule should show as such.
-   - The one guard kept from the original brief: each log claims the
-     earliest still-unclaimed checkpoint sharing its stage, so N entries
-     light N nodes rather than every node with that stage (Prototyping
-     spans Weeks 5-7 in ENRH 116 — one entry must not light all three).
+   Design, per Durga (2026-09-18), REVERSING the original P0-2 decision
+   this file used to test: reach is now bound ONLY to the checkpoint's
+   own calendar date, identical for every project, with no Update Log
+   input at all.
+
+   Why the reversal: date-unbound reach let one early log claim a
+   later-week checkpoint (e.g. an early "Pitch Prep" entry lighting
+   Week 11 while the class was still in Week 3), which on a timeline
+   literally labeled "mapped to syllabus" read as visibly broken —
+   later weeks lit up while earlier ones weren't. The old
+   buildCheckpoints()/roadmap-detail (click-to-expand debrief) are gone;
+   see buildSyllabusCalendar in project.html.
 */
 const { load, check, checkTrue, section } = require("./harness");
 const F = require("./fixtures");
 
 const ctx = load([
   { file: "assets/js/sheets.js", fns: ["formatGvizDate", "parseGvizDate"] },
-  { file: "projects/project.html", fns: ["byTimestamp", "buildCheckpoints", "roadmapFillPct"], consts: ["tsOf"] },
+  { file: "projects/project.html", fns: ["buildSyllabusCalendar", "roadmapFillPct"] },
 ]);
 
-const TODAY = new Date(2026, 9, 3); // Oct 3 2026, mid-semester
-
 function run() {
-  section("P0-2 — roadmap reach + fill (no date bound, count-based fill)");
+  section("Timeline — buildSyllabusCalendar (calendar-only reach)");
 
-  // ── Shared-stage containment still holds without the date bound ──
-  const cps = ctx.buildCheckpoints(F.SYLLABUS_12, F.LOGS_ONE_PROTOTYPING, TODAY);
+  // "We just had Week 3 lecture completed" — Sep 17 2026 is Week 3's date;
+  // Sep 18 (the day after) should show Weeks 1-3 reached, Week 4+ not.
+  const dayAfterWeek3 = new Date(2026, 8, 18);
+  const cps = ctx.buildSyllabusCalendar(F.SYLLABUS_12, dayAfterWeek3);
   check("12 checkpoints built", cps.length, 12);
-  check("Week 5 (Prototyping) is reached", cps[4].reached, true);
-  check("Week 6 (same stage) is NOT reached — only one log, earliest claims first", cps[5].reached, false);
-  check("Week 7 (same stage) is NOT reached", cps[6].reached, false);
-  check("exactly one checkpoint reached from one log", cps.filter(c => c.reached).length, 1);
-  check("fill = 1/12 ≈ 8.3%", Math.round(ctx.roadmapFillPct(cps) * 10) / 10, 8.3);
+  check("Weeks 1-3 are reached (dates have passed)", cps.slice(0, 3).every(c => c.reached), true);
+  check("Week 4 onward is NOT reached (date hasn't happened yet)", cps.slice(3).some(c => c.reached), false);
+  check("exactly 3 reached", cps.filter(c => c.reached).length, 3);
+  check("fill = 3/12 = 25%", ctx.roadmapFillPct(cps), 25);
 
-  // ── An early log now CAN claim a later-week checkpoint ────────
-  // This is the intended behaviour post-decision: progress isn't gated by
-  // the calendar. A "Pitch Prep" entry logged in Week 4 claims the
-  // earliest unclaimed "Pitch Prep" checkpoint (Week 11), reflecting that
-  // the team is genuinely ahead — not a bug to suppress.
-  const early = ctx.buildCheckpoints(F.SYLLABUS_12, F.LOGS_EARLY_PITCH, TODAY);
-  check("early 'Pitch Prep' log claims the Week-11 checkpoint (team is ahead)",
-    early.map((c, i) => (c.reached ? i + 1 : null)).filter(Boolean), [11]);
-  check("only ONE checkpoint reached — it does not also light Week 12", ctx.roadmapFillPct(early), (1/12)*100);
-  checkTrue("fill is nowhere near 100% from a single entry", ctx.roadmapFillPct(early) < 15);
+  // ── No log data changes anything — this is the whole point ─────────
+  // buildSyllabusCalendar doesn't even take a logs argument anymore, so
+  // there's no "early log claims a later week" case left to test; the
+  // function signature itself makes that bug structurally impossible.
+  checkTrue("function takes exactly 2 params (syllabusRows, today) — no logs input",
+    ctx.buildSyllabusCalendar.length === 2);
 
-  // ── Sequential claiming across shared stages ──────────────────
-  const two = ctx.buildCheckpoints(F.SYLLABUS_12, [
-    { Timestamp: "Date(2026,9,1)", "Biodesign Stage": "Prototyping", Description: "first" },
-    { Timestamp: "Date(2026,9,8)", "Biodesign Stage": "Prototyping", Description: "second" },
-  ], TODAY);
-  check("two Prototyping logs claim Weeks 5 and 6, not 5/6/7",
-    two.map((c, i) => (c.reached ? i + 1 : null)).filter(Boolean), [5, 6]);
-  check("earliest log claims earliest week (debrief matches)", two[4].debrief, "first");
-  check("second log claims the next week", two[5].debrief, "second");
-  check("fill = 2/12 ≈ 16.7%", Math.round(ctx.roadmapFillPct(two) * 10) / 10, 16.7);
+  // ── Same date, on the week itself, not just the day after ──────────
+  const onWeek3 = new Date(2026, 8, 17);
+  const cpsOnDay = ctx.buildSyllabusCalendar(F.SYLLABUS_12, onWeek3);
+  check("a week is reached on its own date, not just after", cpsOnDay[2].reached, true);
 
-  // ── Debrief / date correctness (the P0-1 knock-on) ────────────
-  check("reached checkpoint carries its own log's debrief", cps[4].debrief, "First foam mockup done");
-  checkTrue("reached checkpoint has an actual date", !!cps[4].actualDate);
-  check("unreached checkpoint has null actual date", cps[5].actualDate, null);
+  // ── Sorted by Week even if the syllabus rows arrive out of order ───
+  const shuffled = [F.SYLLABUS_12[2], F.SYLLABUS_12[0], F.SYLLABUS_12[1]];
+  const cpsShuffled = ctx.buildSyllabusCalendar(shuffled, dayAfterWeek3);
+  check("output is sorted by Week regardless of input order", cpsShuffled.map(c => c.week), [1, 2, 3]);
 
-  // ── Full progression ──────────────────────────────────────────
-  const allStages = F.SYLLABUS_12.map(w => ({
-    Timestamp: `Date(${w.Date.slice(0,4)},${parseInt(w.Date.slice(5,7),10)-1},${parseInt(w.Date.slice(8,10),10)})`,
-    "Biodesign Stage": w["Expected Stage"],
-    Description: `wk${w.Week}`,
-  }));
-  const full = ctx.buildCheckpoints(F.SYLLABUS_12, allStages, TODAY);
-  check("one log per week reaches all 12 checkpoints", full.filter(c => c.reached).length, 12);
-  check("all reached => fill 100%", ctx.roadmapFillPct(full), 100);
-
-  // ── Degenerate inputs ─────────────────────────────────────────
-  check("empty syllabus => no checkpoints, fill 0", ctx.buildCheckpoints([], F.SORT_LOGS, TODAY).length, 0);
+  // ── Degenerate inputs ────────────────────────────────────────────
+  check("empty syllabus => no checkpoints", ctx.buildSyllabusCalendar([], dayAfterWeek3).length, 0);
   check("empty checkpoints => fill 0, no divide-by-zero", ctx.roadmapFillPct([]), 0);
-  check("single checkpoint, unreached => fill 0", ctx.roadmapFillPct([{ reached: false }]), 0);
-  check("single checkpoint, reached => fill 100", ctx.roadmapFillPct([{ reached: true }]), 100);
-  check("null-timestamp log is skipped, does not throw",
-    ctx.buildCheckpoints(F.SYLLABUS_12, [{ Timestamp: null, "Biodesign Stage": "Prototyping" }], TODAY)
-      .filter(c => c.reached).length, 0);
 
-  // ── Checkpoints with unparseable syllabus dates are still claimable ──
-  // (Direct consequence of dropping the date bound — a checkpoint with a
-  // bad/missing Date cell can no longer be permanently unreachable, since
-  // reach no longer depends on rawDate at all.)
   const badDateSyllabus = [{ Week: 1, Date: "not a date", Topic: "X", "Expected Stage": "Ideation" }];
-  const badDateLogs = [{ Timestamp: "Date(2026,8,20)", "Biodesign Stage": "Ideation", Description: "still counts" }];
-  check("checkpoint with unparseable Date can still be reached",
-    ctx.buildCheckpoints(badDateSyllabus, badDateLogs, TODAY)[0].reached, true);
+  check("checkpoint with an unparseable Date is simply never reached, not thrown",
+    ctx.buildSyllabusCalendar(badDateSyllabus, dayAfterWeek3)[0].reached, false);
+
+  // ── Before the course has started at all ────────────────────────
+  const beforeCourseStart = new Date(2026, 7, 1); // Aug 1, before Week 1
+  const cpsBefore = ctx.buildSyllabusCalendar(F.SYLLABUS_12, beforeCourseStart);
+  check("nothing is reached before the course starts", cpsBefore.filter(c => c.reached).length, 0);
 }
 
 module.exports = { run };

@@ -207,6 +207,21 @@ function buildDeliverableSummary(deliverableRows, projectName, today) {
 }
 
 /**
+ * Student Portal — Overview "Next Deadline".
+ *
+ * The soonest not-yet-submitted deliverable for a project, drawn from the
+ * same sorted-by-due-date list buildDeliverableSummary() already produces.
+ * Replaces the old Dashboard "Next Presentation" field (a single manually-
+ * typed cell that's easy to forget to update) with something that's
+ * automatically correct the moment a deliverable is marked Submitted —
+ * and, since the deliverable schedule is shared across the whole class,
+ * every project sees the same upcoming date until it submits early.
+ */
+function nextDeadlineFrom(deliverableItems) {
+  return deliverableItems.find(i => i.status !== "submitted") || null;
+}
+
+/**
  * Student Portal — Team tab.
  *
  * Every Roster row for a project, reshaped into a display-ready team
