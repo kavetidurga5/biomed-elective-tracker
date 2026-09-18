@@ -63,6 +63,18 @@ function run() {
   const beforeCourseStart = new Date(2026, 7, 1); // Aug 1, before Week 1
   const cpsBefore = ctx.buildSyllabusCalendar(F.SYLLABUS_12, beforeCourseStart);
   check("nothing is reached before the course starts", cpsBefore.filter(c => c.reached).length, 0);
+
+  // ── A stray note row above the real Week 1 row must not become a
+  //    phantom checkpoint (live bug, 2026-09-18: a "PRE-LOADED FROM
+  //    ENRH 116 FALL 2026 SYLLABUS..." instruction row with no Week
+  //    value rendered as a "WK" node before Week 1) ───────────────
+  const withStrayNote = [
+    { Week: "", Date: "", Topic: "PRE-LOADED FROM ENRH 116 FALL 2026 SYLLABUS. EDIT ONLY IF THE SYLLABUS CHANGES.", "Expected Stage": "" },
+    ...F.SYLLABUS_12,
+  ];
+  const cpsWithNote = ctx.buildSyllabusCalendar(withStrayNote, dayAfterWeek3);
+  check("stray non-numeric-Week row is dropped, not rendered as a phantom node", cpsWithNote.length, 12);
+  check("Week 1 is still first after dropping the stray row", cpsWithNote[0].week, 1);
 }
 
 module.exports = { run };
