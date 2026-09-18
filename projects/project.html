@@ -36,33 +36,29 @@
     </h1>
     <p class="detail-body" id="project-subtitle">Fetching live status from the team's tracker…</p>
 
-    <div class="context-grid">
-      <div class="context-block">
-        <p class="context-label">Current Stage</p>
-        <p class="context-text" id="stage-text">—</p>
-      </div>
-      <div class="context-block">
-        <p class="context-label">Overall Health</p>
-        <p class="context-text" id="health-text">—</p>
-      </div>
-      <div class="context-block">
-        <p class="context-label">Team</p>
-        <p class="context-text" id="team-text">—</p>
-      </div>
-      <div class="context-block">
-        <p class="context-label">Next Presentation</p>
-        <p class="context-text" id="next-pres-text">—</p>
-      </div>
-    </div>
-
     <div class="portal-tabs" id="portal-tabs" role="tablist">
       <button class="portal-tab active" id="tab-btn-overview" role="tab" aria-selected="true" aria-controls="tab-panel-overview">Overview</button>
-      <button class="portal-tab" id="tab-btn-notes" role="tab" aria-selected="false" aria-controls="tab-panel-notes">Meeting Notes &amp; Milestones</button>
       <button class="portal-tab" id="tab-btn-team" role="tab" aria-selected="false" aria-controls="tab-panel-team">Team</button>
+      <button class="portal-tab" id="tab-btn-needs" role="tab" aria-selected="false" aria-controls="tab-panel-needs">Team Needs</button>
+      <button class="portal-tab" id="tab-btn-notes" role="tab" aria-selected="false" aria-controls="tab-panel-notes">Meeting Notes &amp; Milestones</button>
+      <button class="portal-tab" id="tab-btn-pubs" role="tab" aria-selected="false" aria-controls="tab-panel-pubs">Publications/Presentations</button>
     </div>
 
     <div class="portal-panel" id="tab-panel-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
-      <p class="conf-heading" id="roadmap-heading">Roadmap</p>
+
+      <!-- Optional elevator pitch + key stat — from new Dashboard columns
+           "Elevator Pitch", "Key Stat Number", "Key Stat Text". Hidden
+           entirely when not set, so a project that hasn't filled these in
+           yet shows nothing rather than an empty banner. -->
+      <div class="overview-pitch" id="overview-pitch-section" style="display:none;">
+        <p class="overview-pitch-text" id="overview-pitch-text"></p>
+        <div class="overview-stat" id="overview-stat-block" style="display:none;">
+          <div class="overview-stat-num" id="overview-stat-num"></div>
+          <div class="overview-stat-text" id="overview-stat-text"></div>
+        </div>
+      </div>
+
+      <p class="conf-heading" id="roadmap-heading">Timeline — Mapped to Syllabus</p>
       <p class="roadmap-note" id="roadmap-note" style="display:none;"></p>
       <div class="roadmap-wrap">
         <div class="roadmap-track" id="roadmap-track">
@@ -75,31 +71,55 @@
         <div class="roadmap-detail" id="roadmap-detail"></div>
       </div>
 
-      <div id="poster-section" style="display:none;">
-        <p class="conf-heading">Poster</p>
-        <div class="poster-wrap">
-          <a class="poster-frame" id="poster-link" href="#" target="_blank" rel="noopener">
-            <img id="poster-img" src="" alt="Project poster"/>
-          </a>
-          <p class="poster-link-label">Click to view full poster (PDF)</p>
+      <!-- Optional — from new Dashboard columns "Disease State",
+           "Affected Demographic". Hidden entirely when neither is set. -->
+      <div id="disease-section" style="display:none;">
+        <p class="conf-heading">Disease State &amp; Affected Demographic</p>
+        <div class="fact-grid">
+          <div>
+            <p class="context-label">Disease State</p>
+            <p class="context-text" id="disease-state-text">—</p>
+          </div>
+          <div>
+            <p class="context-label">Affected Demographic</p>
+            <p class="context-text" id="demographic-text">—</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Optional — from new Dashboard columns "Problem Statement", "Gap".
+           Each block hides independently, so a project with only one
+           filled in doesn't show an empty labeled block for the other. -->
+      <div id="problem-gap-section" style="display:none;">
+        <p class="conf-heading">Problem &amp; Gap</p>
+        <div class="prose-block" id="problem-block" style="display:none;">
+          <p class="prose-label">Problem Statement</p>
+          <p class="prose-body" id="problem-text"></p>
+        </div>
+        <div class="prose-block" id="gap-block" style="display:none;">
+          <p class="prose-label">Gap</p>
+          <p class="prose-body" id="gap-text"></p>
+        </div>
+      </div>
+
+      <p class="conf-heading">Status</p>
+      <div class="context-grid">
+        <div class="context-block">
+          <p class="context-label">Current Stage</p>
+          <p class="context-text" id="stage-text">—</p>
+        </div>
+        <div class="context-block">
+          <p class="context-label">Overall Health</p>
+          <p class="context-text" id="health-text">—</p>
+        </div>
+        <div class="context-block">
+          <p class="context-label">Next Deadline</p>
+          <p class="context-text" id="next-pres-text">—</p>
         </div>
       </div>
 
       <p class="conf-heading">Deliverables</p>
       <div class="deliverables-list" id="deliverables-list" aria-live="polite">
-        <p class="state-message-dark">Loading…</p>
-      </div>
-
-      <p class="conf-heading">Presentations</p>
-      <div class="conf-row" id="presentations-row" aria-live="polite">
-        <p class="state-message-dark">Loading…</p>
-      </div>
-    </div>
-
-    <div class="portal-panel" id="tab-panel-notes" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-notes">
-      <p class="conf-heading">Meeting Notes &amp; Milestones</p>
-      <p class="portal-panel-intro">Every logged update for this project, in order — this is the team's running record, separate from the roadmap's checkpoint view above.</p>
-      <div class="milestone-list" id="milestone-feed-list" aria-live="polite">
         <p class="state-message-dark">Loading…</p>
       </div>
     </div>
@@ -111,6 +131,48 @@
         <p class="state-message-dark">Loading…</p>
       </div>
     </div>
+
+    <div class="portal-panel" id="tab-panel-needs" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-needs">
+      <p class="conf-heading">Admin Support Requests</p>
+      <p class="portal-panel-intro">Every "Needs Admin Support" entry this team has logged, newest first.</p>
+      <div id="team-needs-list" aria-live="polite">
+        <p class="state-message-dark">Loading…</p>
+      </div>
+    </div>
+
+    <div class="portal-panel" id="tab-panel-notes" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-notes">
+      <p class="conf-heading">Submission Log</p>
+      <p class="portal-panel-intro">Every logged update for this project, in order — this is the team's running record, separate from the roadmap's checkpoint view above.</p>
+      <div class="log-table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr><th>Date</th><th>Type</th><th>Description</th><th>Submitted By</th></tr>
+          </thead>
+          <tbody id="milestone-feed-body" aria-live="polite">
+            <tr><td colspan="4"><p class="state-message-dark">Loading…</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="portal-panel" id="tab-panel-pubs" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-pubs">
+      <p class="conf-heading">Presentations</p>
+      <div class="conf-row" id="presentations-row" aria-live="polite">
+        <p class="state-message-dark">Loading…</p>
+      </div>
+
+      <div id="poster-section" style="display:none;">
+        <p class="conf-heading">Publications</p>
+        <div class="poster-wrap">
+          <a class="poster-frame" id="poster-link" href="#" target="_blank" rel="noopener">
+            <img id="poster-img" src="" alt="Project poster"/>
+          </a>
+          <p class="poster-link-label">Click to view full poster (PDF)</p>
+        </div>
+      </div>
+      <p class="pubs-empty" id="pubs-empty-note" style="display:none;">No publications submitted yet. Posters and abstracts will appear here once available.</p>
+    </div>
+
   </div>
 </section>
 
@@ -264,8 +326,10 @@
   function wireTabs() {
     const tabs = [
       { btn: "tab-btn-overview", panel: "tab-panel-overview" },
-      { btn: "tab-btn-notes", panel: "tab-panel-notes" },
       { btn: "tab-btn-team", panel: "tab-panel-team" },
+      { btn: "tab-btn-needs", panel: "tab-panel-needs" },
+      { btn: "tab-btn-notes", panel: "tab-panel-notes" },
+      { btn: "tab-btn-pubs", panel: "tab-panel-pubs" },
     ];
     tabs.forEach(({ btn, panel }) => {
       document.getElementById(btn).addEventListener("click", () => {
@@ -279,19 +343,44 @@
     });
   }
 
-  // ── Meeting Notes & Milestones tab (buildMilestoneFeed lives in sheets.js) ──
-  function renderMilestoneFeedTab(el, feed) {
+  // ── Meeting Notes & Milestones tab: submission log table
+  //    (buildMilestoneFeed lives in sheets.js) ──────────────────────
+  function renderMilestoneFeedTable(tbodyEl, feed) {
     if (!feed.length) {
-      el.innerHTML = `<p class="state-message-dark">No updates logged yet.</p>`;
+      tbodyEl.innerHTML = `<tr><td colspan="4"><p class="state-message-dark">No updates logged yet.</p></td></tr>`;
       return;
     }
-    el.innerHTML = feed.map(f => `
-      <div class="milestone-item">
-        <div class="milestone-dot"></div>
-        <div>
-          <div class="milestone-date">${escapeHtml(f.date || "Undated")}${f.stage ? " · " + escapeHtml(f.stage) : ""}</div>
-          <div class="milestone-stage">${escapeHtml(f.entryType)}</div>
-          <div class="milestone-desc">${escapeHtml(f.description) || "<em>No description logged.</em>"}</div>
+    const isAdminType = t => t.toLowerCase().includes("admin");
+    tbodyEl.innerHTML = feed.map(f => `
+      <tr>
+        <td class="log-date">${escapeHtml(f.date || "Undated")}</td>
+        <td><span class="log-type${isAdminType(f.entryType) ? " needs-help" : ""}">${escapeHtml(f.entryType)}</span></td>
+        <td class="log-desc">${escapeHtml(f.description) || "<em>No description logged.</em>"}</td>
+        <td class="log-who">${escapeHtml(f.submittedBy) || "—"}</td>
+      </tr>`).join("");
+  }
+
+  // ── Team Needs tab (buildTeamNeeds lives in sheets.js) ──────────────
+  // The two checkboxes reflect two new optional Update Log columns,
+  // "Admin Confirmed" / "Team Confirmed" — filled in manually in the
+  // Sheet, same pattern as Status. They are NOT interactive here:
+  // clicking one on this page wouldn't write anywhere, so rendering them
+  // disabled avoids implying a save that doesn't happen.
+  function renderTeamNeedsTab(el, needs) {
+    if (!needs.length) {
+      el.innerHTML = `<p class="state-message-dark">No admin support requests logged for this project.</p>`;
+      return;
+    }
+    el.innerHTML = needs.map(n => `
+      <div class="need-card${n.adminConfirmed && n.teamConfirmed ? " fully-confirmed" : ""}">
+        <div class="need-top">
+          <span class="need-date">${escapeHtml(n.date || "Undated")}</span>
+          <span class="need-who">${n.submittedBy ? "Submitted by " + escapeHtml(n.submittedBy) : "Submitter not on file"}</span>
+        </div>
+        <p class="need-desc">${escapeHtml(n.description) || "<em>No description logged.</em>"}</p>
+        <div class="need-checks">
+          <label class="need-check${n.adminConfirmed ? " confirmed" : ""}"><input type="checkbox" disabled ${n.adminConfirmed ? "checked" : ""}> <span>Admin confirms addressed</span></label>
+          <label class="need-check${n.teamConfirmed ? " confirmed" : ""}"><input type="checkbox" disabled ${n.teamConfirmed ? "checked" : ""}> <span>Team confirms need met</span></label>
         </div>
       </div>`).join("");
   }
@@ -330,7 +419,6 @@
   } else {
     withTimeout(fetchAllTabs(), 15000, "project data").then(({ dashboard, roster, presentations, syllabus, updateLog, deliverables }) => {
       const project = dashboard.find(r => projectKey(r["Project"]) === projectKey(projectId));
-      const team = roster.filter(r => projectKey(r["Project"]) === projectKey(projectId));
       const pres = presentations.filter(r => projectKey(r["Project"]) === projectKey(projectId));
       const logs = updateLog.filter(r => projectKey(r["Project"]) === projectKey(projectId));
 
@@ -347,10 +435,42 @@
       document.getElementById("next-pres-text").innerHTML =
         `<strong>${escapeHtml(project && project["Next Presentation"] ? formatGvizDate(project["Next Presentation"]) : "TBD")}</strong>`;
 
-      const teamText = team.length
-        ? team.map(t => escapeHtml(t["Student Name"])).join(", ")
-        : "Not yet assigned";
-      document.getElementById("team-text").innerHTML = `<strong>${teamText}</strong>`;
+      // ── Optional Overview narrative fields — all new Dashboard columns,
+      //    all hidden gracefully when not yet filled in for this project ──
+      const pitch = project && project["Elevator Pitch"] ? project["Elevator Pitch"].trim() : "";
+      const statNum = project && project["Key Stat Number"] ? project["Key Stat Number"].trim() : "";
+      const statText = project && project["Key Stat Text"] ? project["Key Stat Text"].trim() : "";
+      if (pitch || statNum) {
+        document.getElementById("overview-pitch-section").style.display = "block";
+        document.getElementById("overview-pitch-text").textContent = pitch;
+        if (statNum) {
+          document.getElementById("overview-stat-block").style.display = "flex";
+          document.getElementById("overview-stat-num").textContent = statNum;
+          document.getElementById("overview-stat-text").textContent = statText;
+        }
+      }
+
+      const diseaseState = project && project["Disease State"] ? project["Disease State"].trim() : "";
+      const demographic = project && project["Affected Demographic"] ? project["Affected Demographic"].trim() : "";
+      if (diseaseState || demographic) {
+        document.getElementById("disease-section").style.display = "block";
+        document.getElementById("disease-state-text").textContent = diseaseState || "Not yet added";
+        document.getElementById("demographic-text").textContent = demographic || "Not yet added";
+      }
+
+      const problemStatement = project && project["Problem Statement"] ? project["Problem Statement"].trim() : "";
+      const gap = project && project["Gap"] ? project["Gap"].trim() : "";
+      if (problemStatement || gap) {
+        document.getElementById("problem-gap-section").style.display = "block";
+        if (problemStatement) {
+          document.getElementById("problem-block").style.display = "block";
+          document.getElementById("problem-text").textContent = problemStatement;
+        }
+        if (gap) {
+          document.getElementById("gap-block").style.display = "block";
+          document.getElementById("gap-text").textContent = gap;
+        }
+      }
 
       // ── Poster (shown only if Dashboard has a Poster PDF filename set) ──
       const posterPdf = project && project["Poster PDF"] ? project["Poster PDF"].trim() : "";
@@ -366,6 +486,10 @@
         imgEl.src = posterImg
           ? `../assets/img/posters/${posterImg}`
           : `../assets/img/posters/${posterPdf.replace(/\.pdf$/i, ".jpg")}`;
+      } else {
+        // No live "publications" data source yet — the poster is the only
+        // thing that's lived here so far. Empty state until that changes.
+        document.getElementById("pubs-empty-note").style.display = "block";
       }
 
       // ── Completion badge ──
@@ -490,10 +614,13 @@
       }
 
       // ── Meeting Notes & Milestones tab ──
-      renderMilestoneFeedTab(document.getElementById("milestone-feed-list"), buildMilestoneFeed(logs));
+      renderMilestoneFeedTable(document.getElementById("milestone-feed-body"), buildMilestoneFeed(logs));
 
       // ── Team tab ──
       renderTeamTab(document.getElementById("team-grid"), buildTeamRoster(roster, projectId));
+
+      // ── Team Needs tab ──
+      renderTeamNeedsTab(document.getElementById("team-needs-list"), buildTeamNeeds(logs));
     }).catch(err => {
       console.error("Failed to load project tabs:", err);
       document.getElementById("project-title").textContent = "Couldn't load project data";
@@ -508,11 +635,13 @@
         `<p class="state-error-dark">Presentations unavailable — data did not load.</p>`;
       document.getElementById("deliverables-list").innerHTML =
         `<p class="state-error-dark">Deliverables unavailable — data did not load.</p>`;
-      document.getElementById("milestone-feed-list").innerHTML =
-        `<p class="state-error-dark">Meeting notes unavailable — data did not load.</p>`;
+      document.getElementById("milestone-feed-body").innerHTML =
+        `<tr><td colspan="4"><p class="state-error-dark">Meeting notes unavailable — data did not load.</p></td></tr>`;
       document.getElementById("team-grid").innerHTML =
         `<p class="state-error-dark">Team info unavailable — data did not load.</p>`;
-      ["stage-text","health-text","team-text","next-pres-text"]
+      document.getElementById("team-needs-list").innerHTML =
+        `<p class="state-error-dark">Team needs unavailable — data did not load.</p>`;
+      ["stage-text","health-text","next-pres-text"]
         .forEach(id => { document.getElementById(id).textContent = "unavailable"; });
     });
   }
