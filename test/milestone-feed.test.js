@@ -10,10 +10,10 @@ const ctx = load([
 ]);
 
 const LOGS = [
-  { Timestamp: "Date(2026,10,19)", "Biodesign Stage": "Pitch Prep",   "Entry Type": "Update", Description: "Symposium dry run scheduled" },
-  { Timestamp: "Date(2026,8,14)",  "Biodesign Stage": "Needs Finding", "Entry Type": "Meeting Note", Description: "Interviewed 3 attendings" },
-  { Timestamp: null,               "Biodesign Stage": "Prototyping",  "Entry Type": "Blocker", Description: "no timestamp — must sink, not throw" },
-  { Timestamp: "Date(2026,9,1)",   "Biodesign Stage": "Prototyping",  "Entry Type": "Update", Description: "" }, // missing description
+  { Timestamp: "Date(2026,10,19)", "Biodesign Stage": "Pitch Prep",   "Entry Type": "Update", Description: "Symposium dry run scheduled", "Student Name": "Ana Ruiz" },
+  { Timestamp: "Date(2026,8,14)",  "Biodesign Stage": "Needs Finding", "Entry Type": "Meeting Note", Description: "Interviewed 3 attendings", "Student Name": "Devon Cole" },
+  { Timestamp: null,               "Biodesign Stage": "Prototyping",  "Entry Type": "Blocker", Description: "no timestamp — must sink, not throw", "Student Name": "" },
+  { Timestamp: "Date(2026,9,1)",   "Biodesign Stage": "Prototyping",  "Entry Type": "Update", Description: "" }, // missing description AND missing Student Name key entirely
 ];
 
 function run() {
@@ -28,6 +28,10 @@ function run() {
   check("undated entry has an empty (not crashed) date", feed[3].date, "");
   check("entryType defaults to 'Update' when Entry Type is set", feed[0].entryType, "Meeting Note");
   check("missing description defaults to empty string, not undefined", feed[1].description, "");
+  check("submittedBy carries Student Name through", feed[0].submittedBy, "Devon Cole");
+  check("submittedBy carries Student Name through for a later entry too", feed[2].submittedBy, "Ana Ruiz");
+  check("submittedBy defaults to empty string when Student Name key is entirely absent", feed[1].submittedBy, "");
+  check("submittedBy defaults to empty string when Student Name is explicitly blank", feed[3].submittedBy, "");
   check("does not mutate the input array", LOGS.length, 4);
 
   const empty = ctx.buildMilestoneFeed([]);
