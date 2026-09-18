@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
 <title>Dashboard — Biomedical Innovations, UTSW</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -65,7 +66,7 @@
   </a>
   <nav class="site-topbar-nav">
     <a href="index.html" class="active">Dashboard</a>
-    <a href="projects/index.html">Projects</a>
+    <a href="projects/index.html" data-admin-only>Projects</a>
   </nav>
 </header>
 
@@ -119,9 +120,7 @@
   // "we could not load this" must never look like "there is nothing here".
   function renderError(el, what, err) {
     console.error(what, err);
-    const hint = err && err.reason === "envelope"
-      ? "The sheet may no longer be shared publicly."
-      : "Check your connection, or whether the tracker sheet is still shared.";
+    const hint = "Check your connection and try refreshing.";
     el.innerHTML =
       `<div class="state-error"><strong>Couldn't load ${escapeHtml(what)}.</strong>${escapeHtml(hint)} This is a loading failure, not an empty list.</div>`;
   }
@@ -141,15 +140,21 @@
     if (el) el.textContent = "Sync failed — some data on this page did not load";
   }
 
-  // Fixed deliverable dates from the syllabus (Section III). Hardcoded
-  // since these are set once for the semester, not tracked in a sheet tab.
-  const DELIVERABLES = [
-    { date: new Date(2026, 8, 8),  label: "Project Preference Ranking due" },
-    { date: new Date(2026, 8, 9),  label: "Team Formation due" },
-    { date: new Date(2026, 9, 1),  label: "Project Proposal due" },
-    { date: new Date(2026, 9, 22), label: "Mid-Semester Progress Check-In due" },
-    { date: new Date(2026, 10, 26), label: "Pitch Presentation due" },
-  ];
+  // Course-wide deliverable dates now come live from the Deliverables tab via
+  // the course endpoint (single source of truth — previously hardcoded here,
+  // which silently drifted from the syllabus). Filled in by the loader below.
+  let DELIVERABLES = [];
+
+  // Distinct { Deliverable, "Due Date" } rows -> { date, label } for the UI.
+  function buildCourseDeliverables(rows) {
+    const seen = new Set();
+    return (rows || [])
+      .map(r => ({ date: parseGvizDate(r["Due Date"]), name: String(r["Deliverable"] || "").trim() }))
+      .filter(d => d.date && d.name)
+      .filter(d => { const k = d.name + "|" + d.date.getTime(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => a.date - b.date)
+      .map(d => ({ date: d.date, label: `${d.name} due` }));
+  }
 
   // ── Where We Are Now ──────────────────────────────────────────
   // Pure: classify where "today" sits relative to the syllabus weeks.
@@ -166,7 +171,9 @@
     return { state: "in-progress", current: weeks[currentIndex], currentIndex, totalWeeks: weeks.length };
   }
 
-  withTimeout(fetchTab(GIDS.syllabus), 15000, "syllabus").then(rows => {
+  withTimeout(fetchCourseData(), 15000, "syllabus").then(course => {
+    const rows = course.syllabus;
+    DELIVERABLES = buildCourseDeliverables(course.deliverables);
     const today = new Date();
     today.setHours(0,0,0,0);
 
@@ -273,7 +280,7 @@
   //    computeDashboardStats() / isResolved() / selectAlerts() /
   //    sheetRowLink() below are the pure functions that used to drive
   //    those panels. They're kept, untouched and still tested (P1-7,
-  //    p0-3, p0-4-mitigation, resolve-queue-link), in case this or a
+  //    p0-3, p1-8), in case this or a
   //    similar admin-only view gets rebuilt later — removing them now
   //    would mean rewriting the same logic from scratch rather than
   //    just calling it again.
@@ -337,10 +344,7 @@
   // live from the same `weeks` array the week card already builds, keyed
   // off keywords in each week's Topic.
   //
-  // DELIVERABLES stays hardcoded below: the Syllabus Map tab has no
-  // per-deliverable rows, and a live Deliverables tab is a schema change
-  // under Durga's action (brief §5, unblocks M-3). Flagging rather than
-  // half-fixing: this is the one remaining hardcoded course-date source.
+  // Deliverable dates are loaded live from the Deliverables tab (see DELIVERABLES).
   function classifyEventType(topic) {
     const t = (topic || "").toLowerCase();
     if (t.includes("guest speaker")) return "Guest Speaker";
@@ -374,6 +378,7 @@
         <div class="presentation-date">${fmtDate(e.date)}</div>
       </div>`).join("");
   }
+  applyAdminOnlyNav();
 </script>
 
 </body>
