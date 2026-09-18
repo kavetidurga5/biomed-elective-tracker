@@ -1,12 +1,21 @@
 /* sheets.js
-   Shared fetch helper for pulling live data from the Biomedical Innovations
-   Project Tracker Google Sheet into static GitHub Pages pages.
+   Shared data helpers for the Biomedical Innovations tracker.
 
-   HOW TO SET THIS UP:
-   1. Replace SHEET_ID below with your real Sheet ID (Step 2, Part A).
-   2. Replace the three GID placeholders below with your real gids (Step 2, Part B).
-   3. Confirm Sheet is "Anyone with the link: Viewer" (Share) AND Published to web.
+   DATA ACCESS (current design):
+   All pages read data through the Apps Script Web App at GATED_API_URL
+   (source: apps-script/Code.gs). The Google Sheet itself must be set to
+   "Restricted" — the script reads it privately on the site's behalf.
+   fetchTab()/SHEET_ID/GIDS below are LEGACY (direct public-Sheet reads)
+   and are no longer called by any page; they only work while the Sheet is
+   publicly viewable, which it must NOT be.
 */
+
+// Deployed Apps Script Web App (/exec URL). One endpoint, three actions:
+//   (default)          ?project=&token=   -> one team's data
+//   ?action=course                        -> syllabus + course deliverable dates (public)
+//   ?action=projects&token=<ADMIN>        -> admin-only grid data
+const GATED_API_URL = "https://script.google.com/macros/s/AKfycbx8qvKXjQE12HP3bZVySp7zH401oJhBU7vSRDNXrP3P2awzeKCNPJ4ApEBy85x1fddR/exec";
+const ADMIN_TOKEN_STORAGE_KEY = "bi_admin_token";
 
 // ── TODO: fill these in from Step 2 ──────────────────────────────
 const SHEET_ID = "14rtBS-Okk7DWrroNznYtepigcF7cCpwGLtwhNT5n0Hs";
@@ -255,6 +264,59 @@ function parseGatedResponse(json) {
 }
 
 /**
+ * Generic Apps Script URL builder: buildApiUrl(base, { action: "course" }).
+ * Skips null/undefined values; encodes everything else.
+ */
+function buildApiUrl(apiBase, params) {
+  const sep = apiBase.includes("?") ? "&" : "?";
+  const qs = Object.keys(params || {})
+    .filter(k => params[k] != null)
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join("&");
+  return qs ? `${apiBase}${sep}${qs}` : apiBase;
+}
+
+/** Saved admin key for this browser (never embedded in any page or link). */
+function getSavedAdminKey() {
+  try { return localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""; }
+  catch (e) { return ""; }
+}
+
+/** Hide links marked data-admin-only unless this browser has an admin key saved. */
+function applyAdminOnlyNav() {
+  if (getSavedAdminKey()) return;
+  document.querySelectorAll("[data-admin-only]").forEach(el => { el.style.display = "none"; });
+}
+
+/** Calls the Apps Script endpoint; returns parsed JSON or throws SheetError. */
+async function fetchApi(params) {
+  if (GATED_API_URL.includes("PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE")) {
+    throw new SheetError("GATED_API_URL not configured", "config");
+  }
+  let res;
+  try { res = await fetch(buildApiUrl(GATED_API_URL, params)); }
+  catch (err) { throw new SheetError("Network error calling tracker service", "network", err); }
+  if (!res.ok) throw new SheetError(`Tracker service returned HTTP ${res.status}`, "http");
+  let json;
+  try { json = await res.json(); }
+  catch (err) { throw new SheetError("Tracker service returned non-JSON", "parse", err); }
+  lastSyncedAt = new Date();
+  return json;
+}
+
+/** Public course data: { syllabus: [...], deliverables: [{Deliverable, "Due Date"}] } */
+async function fetchCourseData() {
+  const json = await fetchApi({ action: "course" });
+  if (json && typeof json.error === "string") throw new SheetError(json.error, "gviz");
+  return { syllabus: json.syllabus || [], deliverables: json.deliverables || [] };
+}
+
+/** Admin-only overview for the Projects grid. Returns parseGatedResponse shape. */
+async function fetchAdminOverview(token) {
+  return parseGatedResponse(await fetchApi({ action: "projects", token }));
+}
+
+/**
  * Student Portal — Team tab.
  *
  * Every Roster row for a project, reshaped into a display-ready team
@@ -349,12 +411,12 @@ function buildTeamNeeds(logRows) {
  * like "Sep 14, 2026". Returns "" if the value isn't a gviz date.
  */
 function formatGvizDate(value) {
-  if (!value || typeof value !== "string" || !value.startsWith("Date(")) {
-    return value || "";
-  }
-  const nums = value.slice(5, -1).split(",").map(n => parseInt(n, 10));
-  const [y, m, d] = nums;
-  const dt = new Date(y, m, d);
+  if (!value) return "";
+  const isDateLiteral = typeof value === "string" && value.startsWith("Date(");
+  const isIsoText = typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value);
+  if (typeof value === "string" && !isDateLiteral && !isIsoText) return value; // not a date: show as-is
+  const dt = parseGvizDate(value);
+  if (!dt) return String(value);
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
