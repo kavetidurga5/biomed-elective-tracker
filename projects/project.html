@@ -711,7 +711,10 @@
       // Remember this as "my project" only when it's a URL token, i.e. a
       // student's own link — not when an admin is browsing via their key,
       // which must never overwrite a student's saved project on a shared device.
-      if (urlToken && token === urlToken) rememberMyProject(projectId, token);
+      if (urlToken && token === urlToken) {
+        rememberMyProject(projectId, token);
+        applyMyProjectNav(); // the nav was first drawn before this async load finished
+      }
       renderProject(result.data);
     }).catch(err => {
       if (fromAdminForm) setUnlockBusy(false);
