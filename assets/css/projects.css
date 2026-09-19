@@ -378,3 +378,8 @@ body {
 .admin-gate input { padding: 9px 12px; border-radius: 6px; border: 1px solid #C9D2DE; font-size: 14px; width: 250px; margin-right: 8px; }
 .admin-gate button { padding: 9px 16px; border-radius: 6px; border: none; background: var(--teal); color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; }
 .admin-gate button:disabled { opacity: 0.6; cursor: default; }
+
+/* "My Project" nav link — a student's way back to their own page after
+   visiting the Dashboard. Slightly accented so it doesn't read as a
+   duplicate of "Dashboard"/"Projects". */
+.site-topbar-nav a[data-my-project-link] { color: var(--gold, #E8A020); }

@@ -16,6 +16,45 @@
 //   ?action=projects&token=<ADMIN>        -> admin-only grid data
 const GATED_API_URL = "https://script.google.com/macros/s/AKfycbzejLKWnmkJixGIAxTkz1OO_d4bpWXDuGi3IhcmpZLNEzOUt8PW2QlCx3V2Euxl-lY/exec";
 const ADMIN_TOKEN_STORAGE_KEY = "bi_admin_token";
+// A team's own link (project name + token), remembered per-browser the same
+// way the admin key is — so "Dashboard" -> back is possible without keeping
+// the original email. Deliberately separate from the admin key: saving one
+// must never overwrite or leak the other.
+const MY_PROJECT_STORAGE_KEY = "bi_my_project";
+
+/** Called by project.html once a *student* (non-admin) link loads successfully. */
+function rememberMyProject(projectName, token) {
+  try { localStorage.setItem(MY_PROJECT_STORAGE_KEY, JSON.stringify({ id: projectName, token })); }
+  catch (e) {}
+}
+
+/** { id, token } for this browser's own project, or null if never saved. */
+function getMyProject() {
+  try {
+    const raw = localStorage.getItem(MY_PROJECT_STORAGE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && v.id && v.token ? v : null;
+  } catch (e) { return null; }
+}
+
+/**
+ * Show a "My Project" nav link on any page that has a
+ * <a data-my-project-link> placeholder, pointed at this browser's saved
+ * project. Hidden (not just left empty) when nothing is saved yet, e.g. on
+ * a device that has never opened a team link.
+ */
+function applyMyProjectNav() {
+  const mine = getMyProject();
+  document.querySelectorAll("[data-my-project-link]").forEach(el => {
+    if (!mine) { el.style.display = "none"; return; }
+    el.style.display = "";
+    const base = el.getAttribute("data-my-project-link") || "projects/project.html";
+    el.href = `${base}?id=${encodeURIComponent(mine.id)}&token=${encodeURIComponent(mine.token)}`;
+  });
+}
+
+
 
 // ── TODO: fill these in from Step 2 ──────────────────────────────
 const SHEET_ID = "14rtBS-Okk7DWrroNznYtepigcF7cCpwGLtwhNT5n0Hs";

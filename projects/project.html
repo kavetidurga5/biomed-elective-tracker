@@ -24,6 +24,7 @@
   <nav class="site-topbar-nav">
     <a href="../index.html">Dashboard</a>
     <a href="index.html" class="active" data-admin-only>Projects</a>
+    <a href="project.html" data-my-project-link="project.html">My Project</a>
   </nav>
 </header>
 
@@ -707,6 +708,10 @@
       document.getElementById("admin-key-error").style.display = "none";
       document.getElementById("tab-panel-overview").style.display = "block";
       document.getElementById("portal-tabs").style.display = "flex";
+      // Remember this as "my project" only when it's a URL token, i.e. a
+      // student's own link — not when an admin is browsing via their key,
+      // which must never overwrite a student's saved project on a shared device.
+      if (urlToken && token === urlToken) rememberMyProject(projectId, token);
       renderProject(result.data);
     }).catch(err => {
       if (fromAdminForm) setUnlockBusy(false);
@@ -730,6 +735,7 @@
   }
 
   applyAdminOnlyNav();
+  applyMyProjectNav();
 </script>
 
 </body>
