@@ -324,6 +324,31 @@ body {
 }
 .log-type.needs-help { background: rgba(232,160,32,0.18); color: var(--gold); }
 .log-desc { color: rgba(255,255,255,0.75); line-height: 1.55; }
+
+/* Collapsible submission text: clamped to --log-clamp-lines until expanded.
+   The toggle is shown only if the text actually overflows (see initLogToggles). */
+.log-desc { --log-clamp-lines: 3; }
+.log-note { white-space: pre-line; overflow: hidden; }
+.log-note.collapsed {
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--log-clamp-lines);
+}
+.log-toggle {
+  margin-top: 6px; padding: 0; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--teal);
+}
+.log-toggle:hover { text-decoration: underline; }
+.log-toggle:focus-visible, .log-tool-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.log-toggle[hidden] { display: none; }
+.log-toggle .chev { display: inline-block; margin-left: 4px; transition: transform 0.15s; }
+.log-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.log-toolbar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+.log-tool-btn {
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75);
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+  padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.log-tool-btn:hover { background: rgba(255,255,255,0.13); }
 .log-who { color: rgba(255,255,255,0.45); font-size: 14.5px; white-space: nowrap; }
 
 /* ── Team Needs ──────────────────────────────────────────────────── */
