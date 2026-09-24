@@ -152,6 +152,10 @@
     <div class="portal-panel" id="tab-panel-notes" style="display:none;" role="tabpanel" aria-labelledby="tab-btn-notes">
       <p class="conf-heading">Submission Log</p>
       <p class="portal-panel-intro">Every logged update for this project, in order — this is the team's running record, separate from the roadmap's checkpoint view above.</p>
+      <div class="log-toolbar">
+        <button type="button" class="log-tool-btn" id="log-expand-all">Expand all</button>
+        <button type="button" class="log-tool-btn" id="log-collapse-all">Collapse all</button>
+      </div>
       <div class="log-table-wrap">
         <table class="log-table">
           <thead>
@@ -362,6 +366,7 @@
           document.getElementById(b).setAttribute("aria-selected", String(isActive));
           document.getElementById(p).style.display = isActive ? "block" : "none";
         });
+        if (panel === "tab-panel-notes") initLogToggles();
       });
     });
   }
@@ -374,13 +379,54 @@
       return;
     }
     const isAdminType = t => t.toLowerCase().includes("admin");
-    tbodyEl.innerHTML = feed.map(f => `
+    tbodyEl.innerHTML = feed.map((f, i) => `
       <tr>
         <td class="log-date">${escapeHtml(f.date || "Undated")}</td>
         <td><span class="log-type${isAdminType(f.entryType) ? " needs-help" : ""}">${escapeHtml(f.entryType)}</span></td>
-        <td class="log-desc">${escapeHtml(f.description) || "<em>No description logged.</em>"}</td>
+        <td class="log-desc">${renderLogDescription(f.description, i)}</td>
         <td class="log-who">${escapeHtml(f.submittedBy) || "—"}</td>
       </tr>`).join("");
+    initLogToggles();
+  }
+
+  // Student text is escaped FIRST; only then is **bold** turned into <strong>,
+  // so nothing a student types can inject markup.
+  function renderLogDescription(text, i) {
+    if (!text) return "<em>No description logged.</em>";
+    const html = escapeHtml(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    const id = "log-note-" + i;
+    return `<div class="log-note collapsed" id="${id}">${html}</div>` +
+      `<button type="button" class="log-toggle" aria-expanded="false" aria-controls="${id}" hidden>` +
+      `<span class="label">Show more</span><span class="chev" aria-hidden="true">▾</span></button>`;
+  }
+
+  function setLogNoteOpen(btn, open) {
+    const note = document.getElementById(btn.getAttribute("aria-controls"));
+    note.classList.toggle("collapsed", !open);
+    btn.setAttribute("aria-expanded", String(open));
+    btn.querySelector(".label").textContent = open ? "Show less" : "Show more";
+  }
+
+  // Show the toggle only when the clamped text really overflows. Must run while
+  // the Submission Log tab is visible: a display:none tab measures as 0px tall,
+  // which would hide every toggle. So it runs on render AND when the tab opens.
+  function initLogToggles() {
+    document.querySelectorAll("#milestone-feed-body .log-note.collapsed").forEach(note => {
+      if (!note.offsetParent) return; // tab hidden; re-checked when it opens
+      note.nextElementSibling.hidden = !(note.scrollHeight > note.clientHeight + 1);
+    });
+  }
+
+  function wireLogToggles() {
+    document.getElementById("milestone-feed-body").addEventListener("click", ev => {
+      const btn = ev.target.closest(".log-toggle");
+      if (btn) setLogNoteOpen(btn, btn.getAttribute("aria-expanded") !== "true");
+    });
+    const setAll = open => document.querySelectorAll("#milestone-feed-body .log-toggle:not([hidden])")
+      .forEach(btn => setLogNoteOpen(btn, open));
+    document.getElementById("log-expand-all").addEventListener("click", () => setAll(true));
+    document.getElementById("log-collapse-all").addEventListener("click", () => setAll(false));
+    window.addEventListener("resize", initLogToggles);
   }
 
   // ── Team Needs tab (buildTeamNeeds lives in sheets.js) ──────────────
@@ -450,6 +496,7 @@
   }
 
   wireTabs();
+  wireLogToggles();
 
   // Renders the whole page once we have this project's data — identical
   // rendering logic to before; only how the data arrives has changed.
